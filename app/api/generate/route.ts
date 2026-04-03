@@ -51,7 +51,11 @@ async function setRepoSecrets(repoFullName: string) {
   if (process.env.OPENROUTER_API_KEY) secrets['OPENROUTER_API_KEY'] = process.env.OPENROUTER_API_KEY;
   if (process.env.FIRECRAWL_API_KEY) secrets['FIRECRAWL_API_KEY'] = process.env.FIRECRAWL_API_KEY;
 
-  if (Object.keys(secrets).length === 0) return;
+  console.log(`[setRepoSecrets] keys to set: ${Object.keys(secrets).join(', ') || 'none'}`);
+  if (Object.keys(secrets).length === 0) {
+    console.warn('[setRepoSecrets] No secrets found in env vars — check OPENROUTER_API_KEY and FIRECRAWL_API_KEY in Vercel');
+    return;
+  }
 
   // Get repo public key for encryption
   const { key, key_id } = await githubApi(`/repos/${repoFullName}/actions/secrets/public-key`);
@@ -62,6 +66,7 @@ async function setRepoSecrets(repoFullName: string) {
       method: 'PUT',
       body: JSON.stringify({ encrypted_value: encryptedValue, key_id }),
     });
+    console.log(`[setRepoSecrets] ✓ set ${name}`);
   }
 }
 
