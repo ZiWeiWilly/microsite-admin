@@ -1,0 +1,21 @@
+{
+  "name": "microsite-admin",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p 3002",
+    "build": "next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "libsodium-wrappers": "^0.8.2",
+    "next": "^15.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "25.5.2",
+    "@types/react": "19.2.14",
+    "typescript": "6.0.2"
+  }
+}
