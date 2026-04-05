@@ -50,6 +50,7 @@ async function setRepoSecrets(repoFullName: string) {
   const secrets: Record<string, string> = {};
   if (process.env.OPENROUTER_API_KEY) secrets['OPENROUTER_API_KEY'] = process.env.OPENROUTER_API_KEY;
   if (process.env.FIRECRAWL_API_KEY) secrets['FIRECRAWL_API_KEY'] = process.env.FIRECRAWL_API_KEY;
+  if (GITHUB_TOKEN) secrets['PERSONAL_TOKEN'] = GITHUB_TOKEN;
 
   console.log(`[setRepoSecrets] keys to set: ${Object.keys(secrets).join(', ') || 'none'}`);
   if (Object.keys(secrets).length === 0) {
