@@ -5,6 +5,8 @@ const GITHUB_TOKEN = process.env.GITHUB_TOKEN!;
 const TEMPLATE_OWNER = process.env.TEMPLATE_OWNER || 'ZiWeiWilly';
 const TEMPLATE_REPO = process.env.TEMPLATE_REPO || 'microsite-template';
 const TARGET_OWNER = process.env.TARGET_OWNER || TEMPLATE_OWNER;
+const CLOUDFLARE_ACCOUNT_ID = process.env.CLOUDFLARE_ACCOUNT_ID;
+const CLOUDFLARE_API_TOKEN = process.env.CLOUDFLARE_API_TOKEN;
 
 interface SiteConfig {
   attractionName: string;
@@ -71,6 +73,62 @@ async function setRepoSecrets(repoFullName: string) {
   }
 }
 
+async function cloudflareApi(endpoint: string, options: RequestInit = {}) {
+  const res = await fetch(`https://api.cloudflare.com/client/v4${endpoint}`, {
+    ...options,
+    headers: {
+      Authorization: `Bearer ${CLOUDFLARE_API_TOKEN}`,
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  });
+  const data = await res.json();
+  if (!res.ok || !data.success) {
+    throw new Error(`Cloudflare API error: ${JSON.stringify(data.errors)}`);
+  }
+  return data.result;
+}
+
+async function setupCloudflarePages(repoOwner: string, repoName: string, domain: string) {
+  // Project name: max 63 chars, lowercase alphanumeric + hyphens
+  const projectName = repoName.toLowerCase().replace(/[^a-z0-9-]/g, '-').slice(0, 63);
+
+  // Create Pages project linked to the GitHub repo
+  await cloudflareApi(`/accounts/${CLOUDFLARE_ACCOUNT_ID}/pages/projects`, {
+    method: 'POST',
+    body: JSON.stringify({
+      name: projectName,
+      production_branch: 'main',
+      source: {
+        type: 'github',
+        config: {
+          owner: repoOwner,
+          repo_name: repoName,
+          production_branch: 'main',
+          pr_comments_enabled: false,
+          deployments_enabled: true,
+        },
+      },
+      build_config: {
+        build_command: '',
+        destination_dir: '.',
+      },
+    }),
+  });
+
+  // Bind the custom domain (Cloudflare handles DNS automatically since domain is on CF)
+  await cloudflareApi(`/accounts/${CLOUDFLARE_ACCOUNT_ID}/pages/projects/${projectName}/domains`, {
+    method: 'POST',
+    body: JSON.stringify({ name: domain }),
+  });
+
+  return {
+    projectName,
+    pagesUrl: `https://${projectName}.pages.dev`,
+    customDomain: `https://${domain}`,
+  };
+}
+
 export async function POST(request: Request) {
   try {
     if (!GITHUB_TOKEN) {
@@ -122,7 +180,21 @@ export async function POST(request: Request) {
     // Step 3: Auto-set secrets on new repo
     await setRepoSecrets(repoFullName);
 
-    // Step 4: Trigger the generate-and-deploy workflow
+    // Step 4: Set up Cloudflare Pages + custom domain (if configured)
+    let cloudflareResult: { projectName: string; pagesUrl: string; customDomain: string } | undefined;
+    let cloudflareWarning: string | undefined;
+    if (CLOUDFLARE_ACCOUNT_ID && CLOUDFLARE_API_TOKEN && config.domain) {
+      try {
+        cloudflareResult = await setupCloudflarePages(TARGET_OWNER, repoName, config.domain);
+        console.log(`[cloudflare] ✓ Pages project created: ${cloudflareResult.pagesUrl}`);
+        console.log(`[cloudflare] ✓ Custom domain bound: ${cloudflareResult.customDomain}`);
+      } catch (e: unknown) {
+        cloudflareWarning = e instanceof Error ? e.message : String(e);
+        console.warn(`[cloudflare] setup failed: ${cloudflareWarning}`);
+      }
+    }
+
+    // Step 5: Trigger the generate-and-deploy workflow
     try {
       await githubApi(`/repos/${repoFullName}/actions/workflows/generate-and-deploy.yml/dispatches`, {
         method: 'POST',
@@ -140,10 +212,15 @@ export async function POST(request: Request) {
         repoUrl,
         repoFullName,
         warning: `Repo created but workflow trigger failed: ${msg}. You may need to trigger the workflow manually from the Actions tab.`,
+        ...(cloudflareResult && {
+          pagesUrl: cloudflareResult.pagesUrl,
+          customDomain: cloudflareResult.customDomain,
+        }),
+        ...(cloudflareWarning && { cloudflareWarning }),
       });
     }
 
-    // Step 5: Get the workflow run URL
+    // Step 6: Get the workflow run URL
     await new Promise(resolve => setTimeout(resolve, 2000));
     let runUrl = `${repoUrl}/actions`;
     try {
@@ -160,6 +237,11 @@ export async function POST(request: Request) {
       repoFullName,
       runUrl,
       message: `Site generation started for ${config.attractionName}`,
+      ...(cloudflareResult && {
+        pagesUrl: cloudflareResult.pagesUrl,
+        customDomain: cloudflareResult.customDomain,
+      }),
+      ...(cloudflareWarning && { cloudflareWarning }),
     });
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : 'Unknown error';
