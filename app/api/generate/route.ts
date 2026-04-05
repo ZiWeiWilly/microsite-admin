@@ -157,7 +157,7 @@ export async function POST(request: Request) {
           owner: TARGET_OWNER,
           name: repoName,
           description: `Klook affiliate landing page for ${config.attractionName}`,
-          private: false,
+          private: true,
           include_all_branches: false,
         }),
       });
