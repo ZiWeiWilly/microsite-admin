@@ -2,22 +2,6 @@
 
 import { useState, useRef, FormEvent } from 'react';
 
-const CURRENCIES = [
-  'THB', 'USD', 'EUR', 'GBP', 'JPY', 'CNY', 'KRW', 'TWD',
-  'HKD', 'SGD', 'MYR', 'PHP', 'IDR', 'VND', 'INR', 'RUB', 'AUD',
-];
-
-const ALL_LANGUAGES = [
-  { code: 'en', label: 'English' },
-  { code: 'zh-CN', label: '简体中文' },
-  { code: 'zh-TW', label: '繁體中文' },
-  { code: 'ja', label: '日本語' },
-  { code: 'ko', label: '한국어' },
-  { code: 'ms', label: 'Bahasa Melayu' },
-  { code: 'vi', label: 'Tiếng Việt' },
-  { code: 'de', label: 'Deutsch' },
-  { code: 'fr', label: 'Français' },
-];
 
 export default function Home() {
   const [loading, setLoading] = useState(false);
@@ -27,7 +11,9 @@ export default function Home() {
   const [attractionName, setAttractionName] = useState('');
   const [klookUrl, setKlookUrl] = useState('');
   const [baseCurrency, setBaseCurrency] = useState('THB');
-  const [languages, setLanguages] = useState<string[]>(ALL_LANGUAGES.map(l => l.code));
+  const [languages, setLanguages] = useState<string[]>([
+    'en', 'zh-CN', 'zh-TW', 'ja', 'ko', 'ms', 'vi', 'de', 'fr',
+  ]);
   const [colors, setColors] = useState({ primary: '#0ea5e9', secondary: '#06b6d4', accent: '#f59e0b' });
 
   // Recommend state
@@ -103,16 +89,6 @@ export default function Home() {
     }
   }
 
-  function toggleLang(code: string) {
-    setLanguages(prev =>
-      prev.includes(code) ? prev.filter(c => c !== code) : [...prev, code]
-    );
-  }
-
-  const fadingStyle = recommendLoading
-    ? { opacity: 0.5, transition: 'opacity 0.3s', pointerEvents: 'none' as const }
-    : { opacity: 1, transition: 'opacity 0.3s' };
-
   const styles = {
     container: { maxWidth: 720, margin: '0 auto', padding: '40px 20px' },
     card: { background: '#fff', borderRadius: 12, padding: 32, boxShadow: '0 1px 3px rgba(0,0,0,0.1)' },
@@ -121,16 +97,6 @@ export default function Home() {
     fieldGroup: { marginBottom: 20 },
     label: { display: 'block' as const, fontSize: 13, fontWeight: 600 as const, color: '#333', marginBottom: 6 },
     input: { width: '100%', padding: '10px 12px', border: '1px solid #ddd', borderRadius: 8, fontSize: 14, boxSizing: 'border-box' as const },
-    select: { padding: '10px 12px', border: '1px solid #ddd', borderRadius: 8, fontSize: 14 },
-    colorRow: { display: 'flex', gap: 12, alignItems: 'center' as const },
-    colorInput: { width: 48, height: 36, border: '1px solid #ddd', borderRadius: 6, cursor: 'pointer' },
-    langGrid: { display: 'flex', flexWrap: 'wrap' as const, gap: 8 },
-    langChip: (active: boolean) => ({
-      padding: '6px 12px', borderRadius: 20, fontSize: 13, cursor: 'pointer',
-      border: active ? '2px solid #0ea5e9' : '2px solid #e5e5e5',
-      background: active ? '#f0f9ff' : '#fff',
-      color: active ? '#0369a1' : '#666',
-    }),
     button: {
       width: '100%', padding: '14px 24px', background: '#0ea5e9', color: '#fff',
       border: 'none', borderRadius: 10, fontSize: 16, fontWeight: 600 as const,
@@ -144,7 +110,6 @@ export default function Home() {
       background: '#eff6ff', border: '1px solid #bfdbfe', color: '#1e40af',
       display: 'flex', alignItems: 'center' as const, gap: 8,
     },
-    sectionLabel: { fontSize: 11, fontWeight: 700 as const, color: '#999', textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: 12, marginTop: 28 },
   };
 
   return (
@@ -154,9 +119,6 @@ export default function Home() {
         <p style={styles.subtitle}>Fill in the details below to generate a new Klook affiliate landing page.</p>
 
         <form onSubmit={handleSubmit}>
-          {/* === Basic Info === */}
-          <div style={styles.sectionLabel}>Basic Info</div>
-
           <div style={styles.fieldGroup}>
             <label style={styles.label}>Attraction Name *</label>
             <input
@@ -193,89 +155,20 @@ export default function Home() {
             <input name="affiliateUrl" required placeholder="https://affiliate.klook.com/redirect?aid=..." style={styles.input} />
           </div>
 
-          {/* === Auto-Recommend Badge === */}
+          {/* === Auto-Recommend Status === */}
           {recommendLoading && (
-            <div style={{ ...styles.recommendBadge, animation: 'pulse 1.5s ease-in-out infinite' }}>
+            <div style={styles.recommendBadge}>
               Analyzing Klook URL...
             </div>
           )}
           {!recommendLoading && recommendInfo && (
             <div style={styles.recommendBadge}>
-              <span>Auto-recommended for <strong>{recommendInfo.countryName}</strong></span>
+              <span>Settings auto-configured for <strong>{recommendInfo.countryName}</strong></span>
               {recommendInfo.confidence !== 'high' && (
                 <span style={{ fontSize: 11, color: '#6b7280' }}>(best guess)</span>
               )}
-              <span style={{ fontSize: 11, color: '#6b7280', marginLeft: 'auto' }}>Adjust below if needed</span>
             </div>
           )}
-
-          {/* === Recommended Settings === */}
-          <div style={{ ...fadingStyle }}>
-            <div style={styles.sectionLabel}>Settings</div>
-
-            <div style={styles.fieldGroup}>
-              <label style={styles.label}>Base Currency</label>
-              <select
-                name="baseCurrency"
-                value={baseCurrency}
-                onChange={e => setBaseCurrency(e.target.value)}
-                style={styles.select}
-              >
-                {CURRENCIES.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
-            </div>
-
-            <div style={styles.fieldGroup}>
-              <label style={styles.label}>Brand Colors</label>
-              <div style={styles.colorRow}>
-                <div>
-                  <small>Primary</small>
-                  <input
-                    name="colorPrimary"
-                    type="color"
-                    value={colors.primary}
-                    onChange={e => setColors(prev => ({ ...prev, primary: e.target.value }))}
-                    style={styles.colorInput}
-                  />
-                </div>
-                <div>
-                  <small>Secondary</small>
-                  <input
-                    name="colorSecondary"
-                    type="color"
-                    value={colors.secondary}
-                    onChange={e => setColors(prev => ({ ...prev, secondary: e.target.value }))}
-                    style={styles.colorInput}
-                  />
-                </div>
-                <div>
-                  <small>Accent</small>
-                  <input
-                    name="colorAccent"
-                    type="color"
-                    value={colors.accent}
-                    onChange={e => setColors(prev => ({ ...prev, accent: e.target.value }))}
-                    style={styles.colorInput}
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div style={styles.fieldGroup}>
-              <label style={styles.label}>Languages</label>
-              <div style={styles.langGrid}>
-                {ALL_LANGUAGES.map(l => (
-                  <span
-                    key={l.code}
-                    style={styles.langChip(languages.includes(l.code))}
-                    onClick={() => l.code === 'en' ? null : toggleLang(l.code)}
-                  >
-                    {l.label}
-                  </span>
-                ))}
-              </div>
-            </div>
-          </div>
 
           <button
             type="submit"
