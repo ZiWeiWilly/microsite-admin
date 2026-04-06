@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, FormEvent } from 'react';
+import { useState, useRef, FormEvent } from 'react';
 
 const CURRENCIES = [
   'THB', 'USD', 'EUR', 'GBP', 'JPY', 'CNY', 'KRW', 'TWD',
@@ -13,19 +13,58 @@ const ALL_LANGUAGES = [
   { code: 'zh-TW', label: '繁體中文' },
   { code: 'ja', label: '日本語' },
   { code: 'ko', label: '한국어' },
-  { code: 'ru', label: 'Русский' },
-  { code: 'hi', label: 'हिन्दी' },
   { code: 'ms', label: 'Bahasa Melayu' },
   { code: 'vi', label: 'Tiếng Việt' },
   { code: 'de', label: 'Deutsch' },
   { code: 'fr', label: 'Français' },
-  { code: 'lo', label: 'ລາວ' },
 ];
 
 export default function Home() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<{ repoUrl?: string; statusUrl?: string; error?: string } | null>(null);
+
+  // Controlled fields for auto-recommend
+  const [attractionName, setAttractionName] = useState('');
+  const [klookUrl, setKlookUrl] = useState('');
+  const [baseCurrency, setBaseCurrency] = useState('THB');
   const [languages, setLanguages] = useState<string[]>(ALL_LANGUAGES.map(l => l.code));
+  const [colors, setColors] = useState({ primary: '#0ea5e9', secondary: '#06b6d4', accent: '#f59e0b' });
+
+  // Recommend state
+  const [recommendLoading, setRecommendLoading] = useState(false);
+  const [recommendInfo, setRecommendInfo] = useState<{ countryName: string; confidence: string } | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+
+  async function fetchRecommendations(url: string, name: string) {
+    if (!url.includes('klook.com/activity/')) return;
+
+    // Abort previous request
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    setRecommendLoading(true);
+    try {
+      const res = await fetch('/api/recommend', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ klookUrl: url, attractionName: name }),
+        signal: controller.signal,
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+
+      setBaseCurrency(data.baseCurrency);
+      setLanguages(data.languages);
+      setColors(data.colors);
+      setRecommendInfo({ countryName: data.countryName, confidence: data.confidence });
+    } catch (e: unknown) {
+      if (e instanceof DOMException && e.name === 'AbortError') return;
+      // Silently ignore — user can fill manually
+    } finally {
+      setRecommendLoading(false);
+    }
+  }
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -35,16 +74,12 @@ export default function Home() {
     const form = new FormData(e.currentTarget);
 
     const config = {
-      attractionName: form.get('attractionName') as string,
-      klookUrl: form.get('klookUrl') as string,
+      attractionName,
+      klookUrl,
       domain: form.get('domain') as string,
       affiliateUrl: form.get('affiliateUrl') as string,
-      baseCurrency: form.get('baseCurrency') as string,
-      colors: {
-        primary: form.get('colorPrimary') as string,
-        secondary: form.get('colorSecondary') as string,
-        accent: form.get('colorAccent') as string,
-      },
+      baseCurrency,
+      colors,
       languages,
     };
 
@@ -74,6 +109,10 @@ export default function Home() {
     );
   }
 
+  const fadingStyle = recommendLoading
+    ? { opacity: 0.5, transition: 'opacity 0.3s', pointerEvents: 'none' as const }
+    : { opacity: 1, transition: 'opacity 0.3s' };
+
   const styles = {
     container: { maxWidth: 720, margin: '0 auto', padding: '40px 20px' },
     card: { background: '#fff', borderRadius: 12, padding: 32, boxShadow: '0 1px 3px rgba(0,0,0,0.1)' },
@@ -100,6 +139,12 @@ export default function Home() {
     buttonDisabled: { opacity: 0.6, cursor: 'not-allowed' },
     success: { marginTop: 20, padding: 16, background: '#f0fdf4', borderRadius: 8, border: '1px solid #bbf7d0' },
     error: { marginTop: 20, padding: 16, background: '#fef2f2', borderRadius: 8, border: '1px solid #fecaca', color: '#dc2626' },
+    recommendBadge: {
+      padding: '10px 14px', borderRadius: 8, fontSize: 13, marginBottom: 20,
+      background: '#eff6ff', border: '1px solid #bfdbfe', color: '#1e40af',
+      display: 'flex', alignItems: 'center' as const, gap: 8,
+    },
+    sectionLabel: { fontSize: 11, fontWeight: 700 as const, color: '#999', textTransform: 'uppercase' as const, letterSpacing: 1, marginBottom: 12, marginTop: 28 },
   };
 
   return (
@@ -109,14 +154,33 @@ export default function Home() {
         <p style={styles.subtitle}>Fill in the details below to generate a new Klook affiliate landing page.</p>
 
         <form onSubmit={handleSubmit}>
+          {/* === Basic Info === */}
+          <div style={styles.sectionLabel}>Basic Info</div>
+
           <div style={styles.fieldGroup}>
             <label style={styles.label}>Attraction Name *</label>
-            <input name="attractionName" required placeholder="e.g. Ramayana Water Park" style={styles.input} />
+            <input
+              name="attractionName"
+              required
+              placeholder="e.g. Ramayana Water Park"
+              style={styles.input}
+              value={attractionName}
+              onChange={e => setAttractionName(e.target.value)}
+              onBlur={() => { if (klookUrl) fetchRecommendations(klookUrl, attractionName); }}
+            />
           </div>
 
           <div style={styles.fieldGroup}>
             <label style={styles.label}>Klook Activity URL *</label>
-            <input name="klookUrl" required placeholder="https://www.klook.com/activity/12345-..." style={styles.input} />
+            <input
+              name="klookUrl"
+              required
+              placeholder="https://www.klook.com/activity/12345-..."
+              style={styles.input}
+              value={klookUrl}
+              onChange={e => setKlookUrl(e.target.value)}
+              onBlur={() => fetchRecommendations(klookUrl, attractionName)}
+            />
           </div>
 
           <div style={styles.fieldGroup}>
@@ -129,43 +193,87 @@ export default function Home() {
             <input name="affiliateUrl" required placeholder="https://affiliate.klook.com/redirect?aid=..." style={styles.input} />
           </div>
 
-          <div style={styles.fieldGroup}>
-            <label style={styles.label}>Base Currency</label>
-            <select name="baseCurrency" defaultValue="THB" style={styles.select}>
-              {CURRENCIES.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
-          </div>
+          {/* === Auto-Recommend Badge === */}
+          {recommendLoading && (
+            <div style={{ ...styles.recommendBadge, animation: 'pulse 1.5s ease-in-out infinite' }}>
+              Analyzing Klook URL...
+            </div>
+          )}
+          {!recommendLoading && recommendInfo && (
+            <div style={styles.recommendBadge}>
+              <span>Auto-recommended for <strong>{recommendInfo.countryName}</strong></span>
+              {recommendInfo.confidence !== 'high' && (
+                <span style={{ fontSize: 11, color: '#6b7280' }}>(best guess)</span>
+              )}
+              <span style={{ fontSize: 11, color: '#6b7280', marginLeft: 'auto' }}>Adjust below if needed</span>
+            </div>
+          )}
 
-          <div style={styles.fieldGroup}>
-            <label style={styles.label}>Brand Colors</label>
-            <div style={styles.colorRow}>
-              <div>
-                <small>Primary</small>
-                <input name="colorPrimary" type="color" defaultValue="#0ea5e9" style={styles.colorInput} />
-              </div>
-              <div>
-                <small>Secondary</small>
-                <input name="colorSecondary" type="color" defaultValue="#06b6d4" style={styles.colorInput} />
-              </div>
-              <div>
-                <small>Accent</small>
-                <input name="colorAccent" type="color" defaultValue="#f59e0b" style={styles.colorInput} />
+          {/* === Recommended Settings === */}
+          <div style={{ ...fadingStyle }}>
+            <div style={styles.sectionLabel}>Settings</div>
+
+            <div style={styles.fieldGroup}>
+              <label style={styles.label}>Base Currency</label>
+              <select
+                name="baseCurrency"
+                value={baseCurrency}
+                onChange={e => setBaseCurrency(e.target.value)}
+                style={styles.select}
+              >
+                {CURRENCIES.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+
+            <div style={styles.fieldGroup}>
+              <label style={styles.label}>Brand Colors</label>
+              <div style={styles.colorRow}>
+                <div>
+                  <small>Primary</small>
+                  <input
+                    name="colorPrimary"
+                    type="color"
+                    value={colors.primary}
+                    onChange={e => setColors(prev => ({ ...prev, primary: e.target.value }))}
+                    style={styles.colorInput}
+                  />
+                </div>
+                <div>
+                  <small>Secondary</small>
+                  <input
+                    name="colorSecondary"
+                    type="color"
+                    value={colors.secondary}
+                    onChange={e => setColors(prev => ({ ...prev, secondary: e.target.value }))}
+                    style={styles.colorInput}
+                  />
+                </div>
+                <div>
+                  <small>Accent</small>
+                  <input
+                    name="colorAccent"
+                    type="color"
+                    value={colors.accent}
+                    onChange={e => setColors(prev => ({ ...prev, accent: e.target.value }))}
+                    style={styles.colorInput}
+                  />
+                </div>
               </div>
             </div>
-          </div>
 
-          <div style={styles.fieldGroup}>
-            <label style={styles.label}>Languages</label>
-            <div style={styles.langGrid}>
-              {ALL_LANGUAGES.map(l => (
-                <span
-                  key={l.code}
-                  style={styles.langChip(languages.includes(l.code))}
-                  onClick={() => l.code === 'en' ? null : toggleLang(l.code)}
-                >
-                  {l.label}
-                </span>
-              ))}
+            <div style={styles.fieldGroup}>
+              <label style={styles.label}>Languages</label>
+              <div style={styles.langGrid}>
+                {ALL_LANGUAGES.map(l => (
+                  <span
+                    key={l.code}
+                    style={styles.langChip(languages.includes(l.code))}
+                    onClick={() => l.code === 'en' ? null : toggleLang(l.code)}
+                  >
+                    {l.label}
+                  </span>
+                ))}
+              </div>
             </div>
           </div>
 
