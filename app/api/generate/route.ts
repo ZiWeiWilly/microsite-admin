@@ -129,13 +129,29 @@ async function setupCloudflarePages(repoOwner: string, repoName: string, domain:
   };
 }
 
+/** Commit a file to the repo via GitHub Contents API */
+async function commitFileToRepo(repoFullName: string, path: string, contentBase64: string, message: string) {
+  await githubApi(`/repos/${repoFullName}/contents/${path}`, {
+    method: 'PUT',
+    body: JSON.stringify({
+      message,
+      content: contentBase64,
+    }),
+  });
+  console.log(`[commitFile] ✓ ${path}`);
+}
+
 export async function POST(request: Request) {
   try {
     if (!GITHUB_TOKEN) {
       return NextResponse.json({ error: 'GITHUB_TOKEN not configured' }, { status: 500 });
     }
 
-    const config: SiteConfig = await request.json();
+    const formData = await request.formData();
+    const config: SiteConfig = JSON.parse(formData.get('config') as string);
+    const logoFile = formData.get('logo') as File | null;
+    const logoLightFile = formData.get('logoLight') as File | null;
+    const logoIconFile = formData.get('logoIcon') as File | null;
 
     // Validate required fields
     const required = ['attractionName', 'klookUrl', 'domain', 'affiliateUrl'] as const;
@@ -180,7 +196,21 @@ export async function POST(request: Request) {
     // Step 3: Auto-set secrets on new repo
     await setRepoSecrets(repoFullName);
 
-    // Step 4: Set up Cloudflare Pages + custom domain (if configured)
+    // Step 4: Commit logo images to the repo
+    const imageFiles = [
+      { file: logoFile, path: 'images/logo.png' },
+      { file: logoLightFile, path: 'images/logo-light.png' },
+      { file: logoIconFile, path: 'images/logo-icon.svg' },
+    ];
+    for (const { file, path } of imageFiles) {
+      if (file) {
+        const buffer = Buffer.from(await file.arrayBuffer());
+        const base64 = buffer.toString('base64');
+        await commitFileToRepo(repoFullName, path, base64, `Add ${path}`);
+      }
+    }
+
+    // Step 5: Set up Cloudflare Pages + custom domain (if configured)
     let cloudflareResult: { projectName: string; pagesUrl: string; customDomain: string } | undefined;
     let cloudflareWarning: string | undefined;
     if (CLOUDFLARE_ACCOUNT_ID && CLOUDFLARE_API_TOKEN && config.domain) {
@@ -194,7 +224,7 @@ export async function POST(request: Request) {
       }
     }
 
-    // Step 5: Trigger the generate-and-deploy workflow
+    // Step 6: Trigger the generate-and-deploy workflow
     try {
       await githubApi(`/repos/${repoFullName}/actions/workflows/generate-and-deploy.yml/dispatches`, {
         method: 'POST',
@@ -220,7 +250,7 @@ export async function POST(request: Request) {
       });
     }
 
-    // Step 6: Get the workflow run URL
+    // Step 7: Get the workflow run URL
     await new Promise(resolve => setTimeout(resolve, 2000));
     let runUrl = `${repoUrl}/actions`;
     try {

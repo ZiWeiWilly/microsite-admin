@@ -32,6 +32,11 @@ export default function Home() {
   const [domain, setDomain] = useState('');
   const [affiliateUrl, setAffiliateUrl] = useState('');
 
+  // Logo images
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoLightFile, setLogoLightFile] = useState<File | null>(null);
+  const [logoIconFile, setLogoIconFile] = useState<File | null>(null);
+
   // Settings (auto-filled, user-editable)
   const [baseCurrency, setBaseCurrency] = useState('THB');
   const [languages, setLanguages] = useState<string[]>(ALL_LANGUAGES.map(l => l.code));
@@ -76,10 +81,15 @@ export default function Home() {
     setGenerateLoading(true);
     setResult(null);
     try {
+      const formData = new FormData();
+      formData.append('config', JSON.stringify({ attractionName, klookUrl, domain, affiliateUrl, baseCurrency, colors, languages }));
+      if (logoFile) formData.append('logo', logoFile);
+      if (logoLightFile) formData.append('logoLight', logoLightFile);
+      if (logoIconFile) formData.append('logoIcon', logoIconFile);
+
       const res = await fetch('/api/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ attractionName, klookUrl, domain, affiliateUrl, baseCurrency, colors, languages }),
+        body: formData,
       });
       const data = await res.json();
       if (!res.ok) {
@@ -144,6 +154,10 @@ export default function Home() {
     },
     success: { marginTop: 20, padding: 20, background: '#f0fdf4', borderRadius: 10, border: '1px solid #bbf7d0' },
     errorBox: { marginTop: 16, padding: 14, background: '#fef2f2', borderRadius: 8, border: '1px solid #fecaca', color: '#dc2626', fontSize: 14 },
+    fileRow: { display: 'flex', alignItems: 'center' as const, gap: 12 },
+    fileInput: { fontSize: 13, color: '#555' },
+    fileHint: { fontSize: 11, color: '#999', marginTop: 4 },
+    preview: { height: 36, maxWidth: 120, objectFit: 'contain' as const, borderRadius: 4, border: '1px solid #eee' },
   };
 
   return (
@@ -228,6 +242,36 @@ export default function Home() {
               disabled={step !== 'basic'}
             />
           </div>
+
+          <div style={{ ...s.divider, margin: '20px 0' }} />
+          <div style={s.sectionTitle}>Logos</div>
+
+          {([
+            { label: 'Logo — Navbar', file: logoFile, setter: setLogoFile, name: 'logo.png' },
+            { label: 'Logo Light — Footer', file: logoLightFile, setter: setLogoLightFile, name: 'logo-light.png' },
+            { label: 'Logo Icon — Favicon', file: logoIconFile, setter: setLogoIconFile, name: 'logo-icon.svg' },
+          ] as const).map(({ label, file, setter, name }) => (
+            <div key={name} style={s.fieldGroup}>
+              <label style={s.label}>{label}</label>
+              <div style={s.fileRow}>
+                <input
+                  type="file"
+                  accept="image/*"
+                  style={s.fileInput}
+                  onChange={e => setter(e.target.files?.[0] ?? null)}
+                  disabled={step !== 'basic'}
+                />
+                {file && (
+                  <img
+                    src={URL.createObjectURL(file)}
+                    alt={label}
+                    style={s.preview}
+                  />
+                )}
+              </div>
+              <div style={s.fileHint}>{name}</div>
+            </div>
+          ))}
 
           {step === 'basic' && (
             <button type="submit" disabled={settingsLoading} style={s.btnPrimary(settingsLoading)}>
