@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, FormEvent } from 'react';
+import { useSession, signOut } from 'next-auth/react';
 
 const CURRENCIES = [
   'THB', 'USD', 'EUR', 'GBP', 'JPY', 'CNY', 'KRW', 'TWD',
@@ -22,6 +23,7 @@ const ALL_LANGUAGES = [
 type Step = 'basic' | 'settings' | 'done';
 
 export default function Home() {
+  const { data: session } = useSession();
   const [step, setStep] = useState<Step>('basic');
 
   // Basic info
@@ -147,6 +149,34 @@ export default function Home() {
   return (
     <div style={s.container}>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+
+      {session?.user && (
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
+          gap: 10, marginBottom: 16,
+        }}>
+          {session.user.image && (
+            <img
+              src={session.user.image}
+              alt={session.user.name ?? ''}
+              width={28}
+              height={28}
+              style={{ borderRadius: '50%' }}
+            />
+          )}
+          <span style={{ fontSize: 13, color: '#555' }}>{session.user.email}</span>
+          <button
+            onClick={() => signOut({ callbackUrl: '/login' })}
+            style={{
+              fontSize: 12, color: '#888', background: 'none', border: '1px solid #e0e0e0',
+              borderRadius: 6, padding: '4px 10px', cursor: 'pointer',
+            }}
+          >
+            Sign out
+          </button>
+        </div>
+      )}
+
       <div style={s.card}>
         <h1 style={s.title}>Microsite Generator</h1>
         <p style={s.subtitle}>Generate a new Klook affiliate landing page in two steps.</p>

@@ -1,10 +1,22 @@
 import { signIn } from '@/app/auth';
 
-export default function LoginPage({
+const ERROR_MESSAGES: Record<string, string> = {
+  AccessDenied: 'Access denied. Only @klook.com Google accounts are allowed.',
+  OAuthSignin: 'Could not start Google sign-in. Please try again.',
+  OAuthCallback: 'Google sign-in failed. Please try again.',
+  Default: 'An error occurred during sign-in. Please try again.',
+};
+
+export default async function LoginPage({
   searchParams,
 }: {
   searchParams: Promise<{ callbackUrl?: string; error?: string }>;
 }) {
+  const params = await searchParams;
+  const errorMessage = params.error
+    ? (ERROR_MESSAGES[params.error] ?? ERROR_MESSAGES.Default)
+    : null;
+
   return (
     <div style={{
       minHeight: '100vh',
@@ -32,10 +44,24 @@ export default function LoginPage({
           </p>
         </div>
 
+        {errorMessage && (
+          <div style={{
+            backgroundColor: '#fef2f2',
+            border: '1px solid #fecaca',
+            borderRadius: '8px',
+            padding: '12px 16px',
+            marginBottom: '20px',
+            fontSize: '13px',
+            color: '#dc2626',
+            textAlign: 'left',
+          }}>
+            {errorMessage}
+          </div>
+        )}
+
         <form
           action={async () => {
             'use server';
-            const params = await searchParams;
             await signIn('google', { redirectTo: params.callbackUrl ?? '/' });
           }}
         >
