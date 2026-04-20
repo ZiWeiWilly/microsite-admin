@@ -236,10 +236,10 @@ export async function POST(request: Request) {
     const vercelExtraSecrets: Record<string, string> = {};
     let vercelProjectUrl: string | undefined;
     if (VERCEL_TOKEN) {
+      vercelExtraSecrets['VERCEL_TOKEN'] = VERCEL_TOKEN;
       try {
         const vercel = await createVercelProject(repoName);
         vercelProjectUrl = vercel.url;
-        vercelExtraSecrets['VERCEL_TOKEN'] = VERCEL_TOKEN;
         vercelExtraSecrets['VERCEL_ORG_ID'] = vercel.orgId;
         vercelExtraSecrets['VERCEL_PROJECT_ID'] = vercel.id;
         console.log(`[vercel] ✓ project created: ${vercelProjectUrl}`);
