@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, FormEvent } from 'react';
+import { useState, useEffect, useRef, FormEvent } from 'react';
 import { useSession, signOut } from 'next-auth/react';
 
 const CURRENCIES = [
@@ -31,6 +31,7 @@ export default function Home() {
   const [klookUrl, setKlookUrl] = useState('');
   const [domain, setDomain] = useState('');
   const [affiliateUrl, setAffiliateUrl] = useState('');
+  const [headScripts, setHeadScripts] = useState('');
 
   // Logo images
   const [logoFile, setLogoFile] = useState<File | null>(null);
@@ -43,6 +44,29 @@ export default function Home() {
   const [colors, setColors] = useState({ primary: '#0ea5e9', secondary: '#06b6d4', accent: '#f59e0b' });
   const [countryName, setCountryName] = useState('');
   const [confidence, setConfidence] = useState('');
+
+  // Duplicate check
+  type DupStatus = 'idle' | 'checking' | 'ok' | 'duplicate';
+  const [dupStatus, setDupStatus] = useState<DupStatus>('idle');
+  const [dupResult, setDupResult] = useState<{ github: boolean; vercel: boolean; repoName: string } | null>(null);
+  const dupTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (dupTimerRef.current) clearTimeout(dupTimerRef.current);
+    if (!domain) { setDupStatus('idle'); setDupResult(null); return; }
+    setDupStatus('checking');
+    dupTimerRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/check-duplicate?domain=${encodeURIComponent(domain)}`);
+        const data = await res.json();
+        setDupResult(data);
+        setDupStatus(data.github || data.vercel ? 'duplicate' : 'ok');
+      } catch {
+        setDupStatus('idle');
+      }
+    }, 600);
+    return () => { if (dupTimerRef.current) clearTimeout(dupTimerRef.current); };
+  }, [domain]);
 
   // Loading
   const [settingsLoading, setSettingsLoading] = useState(false);
@@ -82,7 +106,7 @@ export default function Home() {
     setResult(null);
     try {
       const formData = new FormData();
-      formData.append('config', JSON.stringify({ attractionName, klookUrl, domain, affiliateUrl, baseCurrency, colors, languages }));
+      formData.append('config', JSON.stringify({ attractionName, klookUrl, domain, affiliateUrl, baseCurrency, colors, languages, ...(headScripts.trim() && { headScripts: headScripts.trim() }) }));
       if (logoFile) formData.append('logo', logoFile);
       if (logoLightFile) formData.append('logoLight', logoLightFile);
       if (logoIconFile) formData.append('logoIcon', logoIconFile);
@@ -225,11 +249,26 @@ export default function Home() {
             <input
               required
               placeholder="e.g. ramayana-waterpark.guide"
-              style={s.input}
+              style={{ ...s.input, borderColor: dupStatus === 'duplicate' ? '#f87171' : dupStatus === 'ok' ? '#86efac' : '#ddd' }}
               value={domain}
               onChange={e => setDomain(e.target.value)}
               disabled={step !== 'basic'}
             />
+            {dupStatus === 'checking' && (
+              <div style={{ fontSize: 12, color: '#888', marginTop: 4 }}>Checking for existing project...</div>
+            )}
+            {dupStatus === 'ok' && (
+              <div style={{ fontSize: 12, color: '#16a34a', marginTop: 4 }}>✓ Name is available</div>
+            )}
+            {dupStatus === 'duplicate' && dupResult && (
+              <div style={{ fontSize: 12, color: '#dc2626', marginTop: 4 }}>
+                A project named <strong>{dupResult.repoName}</strong> already exists
+                {dupResult.github && dupResult.vercel && ' on GitHub and Vercel'}
+                {dupResult.github && !dupResult.vercel && ' on GitHub'}
+                {!dupResult.github && dupResult.vercel && ' on Vercel'}
+                . Please use a different domain.
+              </div>
+            )}
           </div>
           <div style={s.fieldGroup}>
             <label style={s.label}>Affiliate URL *</label>
@@ -241,6 +280,18 @@ export default function Home() {
               onChange={e => setAffiliateUrl(e.target.value)}
               disabled={step !== 'basic'}
             />
+          </div>
+
+          <div style={s.fieldGroup}>
+            <label style={s.label}>Head Scripts <span style={{ fontWeight: 400, color: '#999' }}>(optional)</span></label>
+            <textarea
+              placeholder={'Paste tracking scripts to inject into <head> — e.g. GTM, GA4, Hotjar snippets'}
+              style={{ ...s.input, height: 100, resize: 'vertical' as const, fontFamily: 'monospace', fontSize: 12 }}
+              value={headScripts}
+              onChange={e => setHeadScripts(e.target.value)}
+              disabled={step !== 'basic'}
+            />
+            <div style={s.fileHint}>Raw HTML injected verbatim into &lt;head&gt;. Supports any &lt;script&gt; tag.</div>
           </div>
 
           <div style={{ ...s.divider, margin: '20px 0' }} />
@@ -274,7 +325,11 @@ export default function Home() {
           ))}
 
           {step === 'basic' && (
-            <button type="submit" disabled={settingsLoading} style={s.btnPrimary(settingsLoading)}>
+            <button
+              type="submit"
+              disabled={settingsLoading || dupStatus === 'duplicate' || dupStatus === 'checking'}
+              style={s.btnPrimary(settingsLoading || dupStatus === 'duplicate' || dupStatus === 'checking')}
+            >
               {settingsLoading && <span style={s.spinner} />}
               {settingsLoading ? 'Generating Settings...' : 'Auto Settings →'}
             </button>

@@ -18,6 +18,7 @@ interface SiteConfig {
   baseCurrency?: string;
   colors?: { primary: string; secondary: string; accent: string };
   languages?: string[];
+  headScripts?: string;
 }
 
 async function githubApi(endpoint: string, options: RequestInit = {}) {
