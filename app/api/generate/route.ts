@@ -7,6 +7,8 @@ const TEMPLATE_REPO = process.env.TEMPLATE_REPO || 'microsite-template';
 const TARGET_OWNER = process.env.TARGET_OWNER || TEMPLATE_OWNER;
 const CLOUDFLARE_ACCOUNT_ID = process.env.CLOUDFLARE_ACCOUNT_ID;
 const CLOUDFLARE_API_TOKEN = process.env.CLOUDFLARE_API_TOKEN;
+const VERCEL_TOKEN = process.env.VERCEL_TOKEN;
+const VERCEL_ORG_ID = process.env.VERCEL_ORG_ID;
 
 interface SiteConfig {
   attractionName: string;
@@ -47,9 +49,35 @@ async function encryptSecret(publicKey: string, secretValue: string): Promise<st
   return Buffer.from(encrypted).toString('base64');
 }
 
+async function createVercelProject(projectName: string): Promise<{ id: string; url: string }> {
+  const url = new URL('https://api.vercel.com/v10/projects');
+  if (VERCEL_ORG_ID) url.searchParams.set('teamId', VERCEL_ORG_ID);
+
+  const res = await fetch(url.toString(), {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${VERCEL_TOKEN}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      name: projectName,
+      framework: null,
+      buildCommand: '',
+      outputDirectory: '.',
+      installCommand: 'echo skip',
+    }),
+  });
+
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(`Vercel API error: ${data.error?.message || JSON.stringify(data)}`);
+  }
+  return { id: data.id, url: `https://${data.name}.vercel.app` };
+}
+
 /** Set OPENROUTER_API_KEY and FIRECRAWL_API_KEY on the new repo */
-async function setRepoSecrets(repoFullName: string) {
-  const secrets: Record<string, string> = {};
+async function setRepoSecrets(repoFullName: string, extraSecrets: Record<string, string> = {}) {
+  const secrets: Record<string, string> = { ...extraSecrets };
   if (process.env.OPENROUTER_API_KEY) secrets['OPENROUTER_API_KEY'] = process.env.OPENROUTER_API_KEY;
   if (process.env.FIRECRAWL_API_KEY) secrets['FIRECRAWL_API_KEY'] = process.env.FIRECRAWL_API_KEY;
   if (GITHUB_TOKEN) secrets['PERSONAL_TOKEN'] = GITHUB_TOKEN;
@@ -193,8 +221,22 @@ export async function POST(request: Request) {
     // Step 2: Wait for repo to be ready (template generation is async)
     await new Promise(resolve => setTimeout(resolve, 5000));
 
-    // Step 3: Auto-set secrets on new repo
-    await setRepoSecrets(repoFullName);
+    // Step 3: Create Vercel project + auto-set secrets on new repo
+    const vercelExtraSecrets: Record<string, string> = {};
+    let vercelProjectUrl: string | undefined;
+    if (VERCEL_TOKEN) {
+      try {
+        const vercel = await createVercelProject(repoName);
+        vercelProjectUrl = vercel.url;
+        vercelExtraSecrets['VERCEL_TOKEN'] = VERCEL_TOKEN;
+        vercelExtraSecrets['VERCEL_PROJECT_ID'] = vercel.id;
+        if (VERCEL_ORG_ID) vercelExtraSecrets['VERCEL_ORG_ID'] = VERCEL_ORG_ID;
+        console.log(`[vercel] ✓ project created: ${vercelProjectUrl}`);
+      } catch (e: unknown) {
+        console.warn(`[vercel] project creation failed: ${e instanceof Error ? e.message : e}`);
+      }
+    }
+    await setRepoSecrets(repoFullName, vercelExtraSecrets);
 
     // Step 4: Commit logo images to the repo
     const imageFiles = [
@@ -267,6 +309,7 @@ export async function POST(request: Request) {
       repoFullName,
       runUrl,
       message: `Site generation started for ${config.attractionName}`,
+      ...(vercelProjectUrl && { vercelProjectUrl }),
       ...(cloudflareResult && {
         pagesUrl: cloudflareResult.pagesUrl,
         customDomain: cloudflareResult.customDomain,

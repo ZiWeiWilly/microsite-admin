@@ -49,7 +49,7 @@ export default function Home() {
   const [generateLoading, setGenerateLoading] = useState(false);
 
   // Result
-  const [result, setResult] = useState<{ repoUrl?: string; statusUrl?: string; error?: string } | null>(null);
+  const [result, setResult] = useState<{ repoUrl?: string; statusUrl?: string; vercelProjectUrl?: string; error?: string } | null>(null);
 
   async function handleAutoSettings(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -95,7 +95,7 @@ export default function Home() {
       if (!res.ok) {
         setResult({ error: data.error || 'Generation failed' });
       } else {
-        setResult({ repoUrl: data.repoUrl, statusUrl: `/status?repo=${data.repoFullName}` });
+        setResult({ repoUrl: data.repoUrl, statusUrl: `/status?repo=${data.repoFullName}`, vercelProjectUrl: data.vercelProjectUrl });
         setStep('done');
       }
     } catch (err: unknown) {
@@ -368,6 +368,12 @@ export default function Home() {
             <p style={{ margin: '0 0 4px', fontSize: 14 }}>
               Repository: <a href={result.repoUrl} target="_blank" rel="noopener">{result.repoUrl}</a>
             </p>
+            {result.vercelProjectUrl && (
+              <p style={{ margin: '0 0 4px', fontSize: 14 }}>
+                Vercel: <a href={result.vercelProjectUrl} target="_blank" rel="noopener">{result.vercelProjectUrl}</a>
+                {' '}(live after workflow completes)
+              </p>
+            )}
             <p style={{ margin: 0, fontSize: 14 }}>
               <a href={result.statusUrl}>View generation progress →</a>
             </p>
