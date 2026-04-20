@@ -249,7 +249,23 @@ export async function POST(request: Request) {
     }
     await setRepoSecrets(repoFullName, vercelExtraSecrets);
 
-    // Step 4: Commit logo images to the repo
+    // Step 4: Commit .vercelignore + logo images to the repo
+    const vercelIgnoreContent = [
+      '.claude/',
+      '.github/',
+      'scripts/',
+      'src/',
+      'node_modules/',
+      'package-lock.json',
+      '*.md',
+    ].join('\n');
+    await commitFileToRepo(
+      repoFullName,
+      '.vercelignore',
+      Buffer.from(vercelIgnoreContent).toString('base64'),
+      'Add .vercelignore to exclude non-web files from Vercel upload'
+    );
+
     const imageFiles = [
       { file: logoFile, path: 'images/logo.png' },
       { file: logoLightFile, path: 'images/logo-light.png' },
