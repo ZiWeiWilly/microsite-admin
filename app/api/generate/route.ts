@@ -49,7 +49,18 @@ async function encryptSecret(publicKey: string, secretValue: string): Promise<st
   return Buffer.from(encrypted).toString('base64');
 }
 
-async function createVercelProject(projectName: string): Promise<{ id: string; url: string }> {
+async function getVercelOrgId(): Promise<string> {
+  if (VERCEL_ORG_ID) return VERCEL_ORG_ID;
+  const res = await fetch('https://api.vercel.com/v2/user', {
+    headers: { Authorization: `Bearer ${VERCEL_TOKEN}` },
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(`Vercel user fetch failed: ${data.error?.message}`);
+  return data.user.id;
+}
+
+async function createVercelProject(projectName: string): Promise<{ id: string; orgId: string; url: string }> {
+  const orgId = await getVercelOrgId();
   const url = new URL('https://api.vercel.com/v10/projects');
   if (VERCEL_ORG_ID) url.searchParams.set('teamId', VERCEL_ORG_ID);
 
@@ -72,7 +83,7 @@ async function createVercelProject(projectName: string): Promise<{ id: string; u
   if (!res.ok) {
     throw new Error(`Vercel API error: ${data.error?.message || JSON.stringify(data)}`);
   }
-  return { id: data.id, url: `https://${data.name}.vercel.app` };
+  return { id: data.id, orgId, url: `https://${data.name}.vercel.app` };
 }
 
 /** Set OPENROUTER_API_KEY and FIRECRAWL_API_KEY on the new repo */
@@ -229,8 +240,8 @@ export async function POST(request: Request) {
         const vercel = await createVercelProject(repoName);
         vercelProjectUrl = vercel.url;
         vercelExtraSecrets['VERCEL_TOKEN'] = VERCEL_TOKEN;
+        vercelExtraSecrets['VERCEL_ORG_ID'] = vercel.orgId;
         vercelExtraSecrets['VERCEL_PROJECT_ID'] = vercel.id;
-        if (VERCEL_ORG_ID) vercelExtraSecrets['VERCEL_ORG_ID'] = VERCEL_ORG_ID;
         console.log(`[vercel] ✓ project created: ${vercelProjectUrl}`);
       } catch (e: unknown) {
         console.warn(`[vercel] project creation failed: ${e instanceof Error ? e.message : e}`);
