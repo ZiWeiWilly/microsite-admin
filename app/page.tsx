@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, FormEvent } from 'react';
+import { useRouter } from 'next/navigation';
 import { useSession, signOut } from 'next-auth/react';
 
 const CURRENCIES = [
@@ -23,6 +24,7 @@ const ALL_LANGUAGES = [
 type Step = 'basic' | 'settings' | 'done';
 
 export default function Home() {
+  const router = useRouter();
   const { data: session } = useSession();
   const [step, setStep] = useState<Step>('basic');
 
@@ -119,8 +121,7 @@ export default function Home() {
       if (!res.ok) {
         setResult({ error: data.error || 'Generation failed' });
       } else {
-        setResult({ repoUrl: data.repoUrl, statusUrl: `/status?repo=${data.repoFullName}`, vercelProjectUrl: data.vercelProjectUrl });
-        setStep('done');
+        router.push(`/status?repo=${data.repoFullName}`);
       }
     } catch (err: unknown) {
       setResult({ error: err instanceof Error ? err.message : 'Network error' });
