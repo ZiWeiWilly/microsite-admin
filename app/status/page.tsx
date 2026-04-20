@@ -29,27 +29,98 @@ interface StatusData {
   error?: string;
 }
 
+// null = hidden from users
+const STEP_LABELS: Record<string, string | null> = {
+  'Set up job': null,
+  'Complete job': null,
+  'Run actions/checkout@v4': 'Cloning template repository',
+  'Install dependencies': 'Installing dependencies',
+  'Write config file': 'Applying your configuration',
+  'Generate site content': 'Generating site content with AI ✨',
+  'Build site': 'Building site',
+  'Generate sitemap': 'Generating sitemap',
+  'Commit generated content to main': 'Saving generated content',
+  'Deploy to Vercel': 'Deploying to Vercel',
+};
+
+function getFriendlyStepName(name: string): string | null {
+  if (name in STEP_LABELS) return STEP_LABELS[name];
+  if (/^Set up Node/i.test(name)) return 'Setting up environment';
+  return name;
+}
+
+function useElapsed(createdAt: string | undefined): string {
+  const [elapsed, setElapsed] = useState('');
+  useEffect(() => {
+    if (!createdAt) return;
+    const update = () => {
+      const diff = Math.floor((Date.now() - new Date(createdAt).getTime()) / 1000);
+      if (diff < 60) setElapsed(`${diff}s`);
+      else setElapsed(`${Math.floor(diff / 60)}m ${diff % 60}s`);
+    };
+    update();
+    const id = setInterval(update, 1000);
+    return () => clearInterval(id);
+  }, [createdAt]);
+  return elapsed;
+}
+
+function StepIcon({ status, conclusion }: { status: string; conclusion: string | null }) {
+  if (conclusion === 'success') {
+    return (
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" style={{ flexShrink: 0 }}>
+        <circle cx="10" cy="10" r="10" fill="#22c55e" />
+        <path d="M6 10l3 3 5-5" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    );
+  }
+  if (conclusion === 'failure') {
+    return (
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" style={{ flexShrink: 0 }}>
+        <circle cx="10" cy="10" r="10" fill="#ef4444" />
+        <path d="M7 7l6 6M13 7l-6 6" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" />
+      </svg>
+    );
+  }
+  if (conclusion === 'skipped') {
+    return (
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" style={{ flexShrink: 0 }}>
+        <circle cx="10" cy="10" r="10" fill="#d1d5db" />
+        <path d="M7 10h6" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" />
+      </svg>
+    );
+  }
+  if (status === 'in_progress') {
+    return <span className="spinner" style={{ flexShrink: 0 }} />;
+  }
+  return (
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" style={{ flexShrink: 0 }}>
+      <circle cx="10" cy="10" r="9" stroke="#d1d5db" strokeWidth="2" />
+    </svg>
+  );
+}
+
 function StatusContent() {
   const searchParams = useSearchParams();
   const repo = searchParams.get('repo');
   const [data, setData] = useState<StatusData | null>(null);
-  const [error, setError] = useState('');
+  const [fetchError, setFetchError] = useState('');
+  const elapsed = useElapsed(data?.createdAt);
 
   const fetchStatus = useCallback(async () => {
     if (!repo) return;
     try {
       const res = await fetch(`/api/status?repo=${encodeURIComponent(repo)}`);
       const json = await res.json();
-      if (json.error) setError(json.error);
+      if (json.error) setFetchError(json.error);
       else setData(json);
     } catch {
-      setError('Failed to fetch status');
+      setFetchError('Failed to fetch status');
     }
   }, [repo]);
 
   useEffect(() => {
     fetchStatus();
-    // Poll every 10 seconds while in progress
     const interval = setInterval(() => {
       if (data?.status === 'completed') return;
       fetchStatus();
@@ -57,102 +128,209 @@ function StatusContent() {
     return () => clearInterval(interval);
   }, [fetchStatus, data?.status]);
 
-  const styles = {
-    container: { maxWidth: 720, margin: '0 auto', padding: '40px 20px' },
-    card: { background: '#fff', borderRadius: 12, padding: 32, boxShadow: '0 1px 3px rgba(0,0,0,0.1)' },
-    title: { fontSize: 24, fontWeight: 700 as const, marginBottom: 8, color: '#111' },
-    subtitle: { fontSize: 14, color: '#666', marginBottom: 24 },
-    statusBadge: (status: string, conclusion: string | null) => ({
-      display: 'inline-block', padding: '4px 12px', borderRadius: 20, fontSize: 13, fontWeight: 600 as const,
-      background: conclusion === 'success' ? '#dcfce7' : conclusion === 'failure' ? '#fef2f2' : '#fef3c7',
-      color: conclusion === 'success' ? '#166534' : conclusion === 'failure' ? '#dc2626' : '#92400e',
-    }),
-    stepList: { listStyle: 'none' as const, padding: 0, margin: '16px 0' },
-    stepItem: { padding: '8px 0', borderBottom: '1px solid #f3f4f6', display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
-    stepIcon: (status: string, conclusion: string | null) => ({
-      width: 20, height: 20, borderRadius: '50%', display: 'inline-block',
-      background: conclusion === 'success' ? '#22c55e' : conclusion === 'failure' ? '#ef4444' : status === 'in_progress' ? '#f59e0b' : '#d1d5db',
-      marginRight: 8, verticalAlign: 'middle',
-    }),
-    success: { marginTop: 24, padding: 20, background: '#f0fdf4', borderRadius: 8, border: '1px solid #bbf7d0' },
-    error: { marginTop: 20, padding: 16, background: '#fef2f2', borderRadius: 8, border: '1px solid #fecaca', color: '#dc2626' },
-    link: { color: '#0ea5e9', textDecoration: 'none' as const },
-    backLink: { display: 'block', marginBottom: 20, color: '#0ea5e9', textDecoration: 'none' as const, fontSize: 14 },
-  };
+  const visibleSteps = data?.jobs?.flatMap(job =>
+    (job.steps ?? []).flatMap(step => {
+      const label = getFriendlyStepName(step.name);
+      return label ? [{ ...step, label }] : [];
+    })
+  ) ?? [];
+
+  const completedCount = visibleSteps.filter(
+    s => s.conclusion === 'success' || s.conclusion === 'skipped'
+  ).length;
+  const totalCount = visibleSteps.length;
+  const progress = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
+
+  const isCompleted = data?.status === 'completed';
+  const isSuccess = data?.conclusion === 'success';
+  const isFailure = data?.conclusion === 'failure';
+  const activeStepLabel = visibleSteps.find(s => s.status === 'in_progress')?.label;
 
   if (!repo) {
-    return <div style={styles.container}><div style={styles.card}><p>No repo specified.</p></div></div>;
+    return (
+      <div style={s.container}>
+        <div style={s.card}><p style={{ color: '#888' }}>No repository specified.</p></div>
+      </div>
+    );
   }
 
   return (
-    <div style={styles.container}>
-      <a href="/" style={styles.backLink}>&larr; Back to Generator</a>
-      <div style={styles.card}>
-        <h1 style={styles.title}>Generation Status</h1>
-        <p style={styles.subtitle}>Repository: {repo}</p>
+    <>
+      <style>{`
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .spinner {
+          display: inline-block;
+          width: 20px; height: 20px;
+          border: 2.5px solid #e5e7eb;
+          border-top-color: #f59e0b;
+          border-radius: 50%;
+          animation: spin 0.8s linear infinite;
+        }
+      `}</style>
 
-        {error && <div style={styles.error}>{error}</div>}
+      <div style={s.container}>
+        <a href="/" style={s.backLink}>&larr; Back to Generator</a>
+        <div style={s.card}>
+          <div style={{ marginBottom: 24 }}>
+            <h1 style={s.title}>Site Generation Progress</h1>
+            <p style={s.subtitle}>{repo}</p>
+          </div>
 
-        {data && (
-          <>
-            <div style={{ marginBottom: 16 }}>
-              <span style={styles.statusBadge(data.status, data.conclusion)}>
-                {data.conclusion || data.status}
-              </span>
-              {' '}
-              <a href={data.runUrl} target="_blank" rel="noopener" style={styles.link}>
-                View on GitHub &rarr;
-              </a>
+          {fetchError && (
+            <div style={s.errorBox}>
+              <strong>Error:</strong> {fetchError}
             </div>
+          )}
 
-            {data.jobs?.map((job, i) => (
-              <div key={i}>
-                <h3 style={{ fontSize: 16, marginBottom: 8 }}>{job.name}</h3>
-                <ul style={styles.stepList}>
-                  {job.steps?.map((step, j) => (
-                    <li key={j} style={styles.stepItem}>
-                      <span>
-                        <span style={styles.stepIcon(step.status, step.conclusion)} />
-                        {step.name}
-                      </span>
-                      <span style={{ fontSize: 12, color: '#888' }}>{step.conclusion || step.status}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
+          {!data && !fetchError && (
+            <p style={{ color: '#888' }}>Loading status...</p>
+          )}
 
-            {data.conclusion === 'success' && (
-              <div style={styles.success}>
-                <p style={{ fontWeight: 600 }}>Site generated successfully!</p>
-                {data.siteUrl && (
-                  <p>Live at: <a href={data.siteUrl} target="_blank" rel="noopener" style={styles.link}>{data.siteUrl}</a></p>
+          {data && (
+            <>
+              {/* Status + elapsed */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+                <span style={s.badge(data.conclusion)}>
+                  {isSuccess ? 'Completed' : isFailure ? 'Failed' : 'In Progress'}
+                </span>
+                {elapsed && (
+                  <span style={{ fontSize: 13, color: '#888' }}>
+                    {isCompleted ? `Finished in ${elapsed}` : `Running for ${elapsed}`}
+                  </span>
                 )}
-                <p style={{ fontSize: 13, color: '#666', marginTop: 8 }}>
-                  Note: DNS propagation may take up to 24 hours. GitHub Pages setup may take a few minutes.
-                </p>
+                <a href={data.runUrl} target="_blank" rel="noopener" style={{ ...s.link, marginLeft: 'auto', fontSize: 13 }}>
+                  View on GitHub &rarr;
+                </a>
               </div>
-            )}
 
-            {data.status !== 'completed' && (
-              <p style={{ fontSize: 13, color: '#888', marginTop: 16 }}>
-                Auto-refreshing every 10 seconds...
-              </p>
-            )}
-          </>
-        )}
+              {/* Progress bar */}
+              {totalCount > 0 && (
+                <div style={{ marginBottom: 24 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                    <span style={{ fontSize: 13, color: '#555' }}>
+                      {isCompleted && isSuccess
+                        ? 'All steps completed'
+                        : activeStepLabel
+                          ? activeStepLabel
+                          : `${completedCount} of ${totalCount} steps done`}
+                    </span>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>{progress}%</span>
+                  </div>
+                  <div style={s.progressTrack}>
+                    <div style={s.progressFill(progress, isSuccess, isFailure)} />
+                  </div>
+                </div>
+              )}
 
-        {!data && !error && (
-          <p style={{ color: '#888' }}>Loading status...</p>
-        )}
+              {/* Steps */}
+              <ul style={s.stepList}>
+                {visibleSteps.map((step, i) => {
+                  const isActive = step.status === 'in_progress';
+                  return (
+                    <li key={i} style={{ ...s.stepItem, background: isActive ? '#fffbeb' : 'transparent' }}>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <StepIcon status={step.status} conclusion={step.conclusion} />
+                        <span style={{
+                          fontSize: 14,
+                          color: step.conclusion === 'failure' ? '#dc2626' : isActive ? '#92400e' : step.conclusion === null && step.status !== 'in_progress' ? '#9ca3af' : '#111',
+                          fontWeight: isActive ? 600 : 400,
+                        }}>
+                          {step.label}
+                        </span>
+                      </span>
+                      {step.conclusion === 'failure' && (
+                        <span style={{ fontSize: 12, color: '#dc2626', fontWeight: 500 }}>Failed</span>
+                      )}
+                      {isActive && (
+                        <span style={{ fontSize: 12, color: '#92400e', fontWeight: 500 }}>Running…</span>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+
+              {/* Success */}
+              {isSuccess && (
+                <div style={s.successBox}>
+                  <p style={{ fontWeight: 700, fontSize: 16, marginBottom: 8 }}>Your site is live!</p>
+                  {data.siteUrl && (
+                    <p style={{ marginBottom: 8 }}>
+                      <a href={data.siteUrl} target="_blank" rel="noopener" style={{ ...s.link, fontWeight: 600 }}>
+                        {data.siteUrl} &rarr;
+                      </a>
+                    </p>
+                  )}
+                  <p style={{ fontSize: 13, color: '#166534' }}>
+                    It may take a few minutes for the site to be fully accessible.
+                  </p>
+                </div>
+              )}
+
+              {/* Failure */}
+              {isFailure && (
+                <div style={s.failureBox}>
+                  <p style={{ fontWeight: 700, fontSize: 15, marginBottom: 6 }}>Generation failed</p>
+                  <p style={{ fontSize: 13, color: '#7f1d1d', marginBottom: 10 }}>
+                    Something went wrong during the process. Please check the details on GitHub or contact your technical team.
+                  </p>
+                  <a href={data.runUrl} target="_blank" rel="noopener" style={{ ...s.link, fontSize: 13, color: '#dc2626' }}>
+                    View error details on GitHub &rarr;
+                  </a>
+                </div>
+              )}
+
+              {/* Polling notice */}
+              {!isCompleted && (
+                <p style={{ fontSize: 12, color: '#aaa', marginTop: 20, textAlign: 'center' as const }}>
+                  Auto-refreshing every 10 seconds
+                </p>
+              )}
+            </>
+          )}
+        </div>
       </div>
-    </div>
+    </>
   );
 }
 
+const s = {
+  container: { maxWidth: 640, margin: '0 auto', padding: '40px 20px' },
+  card: { background: '#fff', borderRadius: 12, padding: 32, boxShadow: '0 1px 4px rgba(0,0,0,0.08)' },
+  title: { fontSize: 22, fontWeight: 700 as const, marginBottom: 4, color: '#111' },
+  subtitle: { fontSize: 13, color: '#888', fontFamily: 'monospace' },
+  backLink: { display: 'inline-block', marginBottom: 16, color: '#0ea5e9', textDecoration: 'none' as const, fontSize: 14 },
+  link: { color: '#0ea5e9', textDecoration: 'none' as const },
+  badge: (conclusion: string | null) => ({
+    display: 'inline-block', padding: '4px 12px', borderRadius: 20, fontSize: 12, fontWeight: 600 as const,
+    background: conclusion === 'success' ? '#dcfce7' : conclusion === 'failure' ? '#fee2e2' : '#fef3c7',
+    color: conclusion === 'success' ? '#166534' : conclusion === 'failure' ? '#dc2626' : '#92400e',
+  }),
+  progressTrack: { height: 8, borderRadius: 99, background: '#f3f4f6', overflow: 'hidden' as const },
+  progressFill: (pct: number, success: boolean, failure: boolean) => ({
+    height: '100%',
+    width: `${pct}%`,
+    borderRadius: 99,
+    background: success ? '#22c55e' : failure ? '#ef4444' : '#f59e0b',
+    transition: 'width 0.5s ease',
+  }),
+  stepList: { listStyle: 'none' as const, padding: 0, margin: '0 0 8px 0' },
+  stepItem: {
+    padding: '10px 8px', borderBottom: '1px solid #f3f4f6',
+    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+    borderRadius: 6,
+  },
+  successBox: { marginTop: 20, padding: 20, background: '#f0fdf4', borderRadius: 8, border: '1px solid #bbf7d0' },
+  failureBox: { marginTop: 20, padding: 20, background: '#fef2f2', borderRadius: 8, border: '1px solid #fecaca' },
+  errorBox: { padding: 16, background: '#fef2f2', borderRadius: 8, border: '1px solid #fecaca', color: '#dc2626', marginBottom: 16 },
+};
+
 export default function StatusPage() {
   return (
-    <Suspense fallback={<div style={{ maxWidth: 720, margin: '0 auto', padding: '40px 20px' }}><p>Loading...</p></div>}>
+    <Suspense fallback={
+      <div style={{ maxWidth: 640, margin: '0 auto', padding: '40px 20px' }}>
+        <p style={{ color: '#888' }}>Loading...</p>
+      </div>
+    }>
       <StatusContent />
     </Suspense>
   );
