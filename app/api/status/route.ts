@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN!;
+const VERCEL_TOKEN = process.env.VERCEL_TOKEN;
+const VERCEL_ORG_ID = process.env.VERCEL_ORG_ID;
 
 async function githubApi(endpoint: string) {
   const res = await fetch(`https://api.github.com${endpoint}`, {
@@ -61,13 +63,21 @@ export async function GET(request: NextRequest) {
       })),
     };
 
-    // If completed and succeeded, try to get the site URL
-    if (latestRun.conclusion === 'success') {
+    // If completed and succeeded, get the Vercel project URL
+    if (latestRun.conclusion === 'success' && VERCEL_TOKEN) {
       try {
-        const pages = await githubApi(`/repos/${repo}/pages`);
-        result.siteUrl = pages.html_url;
+        const repoName = repo.split('/').pop()!;
+        const params = new URLSearchParams();
+        if (VERCEL_ORG_ID) params.set('teamId', VERCEL_ORG_ID);
+        const res = await fetch(`https://api.vercel.com/v9/projects/${repoName}?${params}`, {
+          headers: { Authorization: `Bearer ${VERCEL_TOKEN}` },
+        });
+        if (res.ok) {
+          const project = await res.json();
+          result.siteUrl = `https://${project.name}.vercel.app`;
+        }
       } catch {
-        // Pages might not be set up yet
+        // Vercel project might not exist yet
       }
     }
 
