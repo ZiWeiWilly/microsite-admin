@@ -35,10 +35,15 @@ export default function Home() {
   const [affiliateUrl, setAffiliateUrl] = useState('');
   const [headScripts, setHeadScripts] = useState('');
 
-  // Logo images
+  // Logo images — AI-generated (base64) or manually uploaded
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoLightFile, setLogoLightFile] = useState<File | null>(null);
   const [logoIconFile, setLogoIconFile] = useState<File | null>(null);
+  const [generatedLogos, setGeneratedLogos] = useState<{ logo: string; logoLight: string; logoIcon: string } | null>(null);
+  const [logoLoading, setLogoLoading] = useState(false);
+  type ChatMessage = { role: 'user' | 'assistant'; content: string };
+  const [logoHistory, setLogoHistory] = useState<ChatMessage[]>([]);
+  const [logoRefinement, setLogoRefinement] = useState('');
 
   // Settings (auto-filled, user-editable)
   const [baseCurrency, setBaseCurrency] = useState('THB');
@@ -103,15 +108,60 @@ export default function Home() {
     }
   }
 
+  async function handleGenerateLogo(refinement?: string) {
+    if (!attractionName) return;
+    setLogoLoading(true);
+
+    // Build conversation history for this call
+    let history: ChatMessage[] = logoHistory;
+    if (refinement?.trim()) {
+      history = [...logoHistory, { role: 'user', content: refinement.trim() }];
+    }
+
+    try {
+      const res = await fetch('/api/generate-logo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ attractionName, history }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Logo generation failed');
+      setGeneratedLogos(data);
+      setLogoHistory(data.history ?? []);
+      setLogoRefinement('');
+      setLogoFile(null);
+      setLogoLightFile(null);
+      setLogoIconFile(null);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Logo generation failed');
+    } finally {
+      setLogoLoading(false);
+    }
+  }
+
+  function base64ToFile(b64: string, filename: string): File {
+    const byteString = atob(b64);
+    const ab = new ArrayBuffer(byteString.length);
+    const ia = new Uint8Array(ab);
+    for (let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i);
+    return new File([ab], filename, { type: 'image/png' });
+  }
+
   async function handleGenerate() {
     setGenerateLoading(true);
     setResult(null);
     try {
       const formData = new FormData();
       formData.append('config', JSON.stringify({ attractionName, klookUrl, domain, affiliateUrl, baseCurrency, colors, languages, ...(headScripts.trim() && { headScripts: headScripts.trim() }) }));
-      if (logoFile) formData.append('logo', logoFile);
-      if (logoLightFile) formData.append('logoLight', logoLightFile);
-      if (logoIconFile) formData.append('logoIcon', logoIconFile);
+
+      // Prefer manually uploaded files; fall back to AI-generated logos
+      const finalLogo = logoFile ?? (generatedLogos ? base64ToFile(generatedLogos.logo, 'logo.png') : null);
+      const finalLogoLight = logoLightFile ?? (generatedLogos ? base64ToFile(generatedLogos.logoLight, 'logo-light.png') : null);
+      const finalLogoIcon = logoIconFile ?? (generatedLogos ? base64ToFile(generatedLogos.logoIcon, 'logo-icon.png') : null);
+
+      if (finalLogo) formData.append('logo', finalLogo);
+      if (finalLogoLight) formData.append('logoLight', finalLogoLight);
+      if (finalLogoIcon) formData.append('logoIcon', finalLogoIcon);
 
       const res = await fetch('/api/generate', {
         method: 'POST',
@@ -296,34 +346,110 @@ export default function Home() {
           </div>
 
           <div style={{ ...s.divider, margin: '20px 0' }} />
-          <div style={s.sectionTitle}>Logos</div>
+          <div style={s.sectionTitle}>Logo</div>
 
-          {([
-            { label: 'Logo — Navbar', file: logoFile, setter: setLogoFile, name: 'logo.png' },
-            { label: 'Logo Light — Footer', file: logoLightFile, setter: setLogoLightFile, name: 'logo-light.png' },
-            { label: 'Logo Icon — Favicon', file: logoIconFile, setter: setLogoIconFile, name: 'logo-icon.svg' },
-          ] as const).map(({ label, file, setter, name }) => (
-            <div key={name} style={s.fieldGroup}>
-              <label style={s.label}>{label}</label>
-              <div style={s.fileRow}>
-                <input
-                  type="file"
-                  accept="image/*"
-                  style={s.fileInput}
-                  onChange={e => setter(e.target.files?.[0] ?? null)}
-                  disabled={step !== 'basic'}
+          {/* AI-generated logo preview + refinement chat */}
+          {generatedLogos && (
+            <div style={{ marginBottom: 16, borderRadius: 10, border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+              {/* Preview */}
+              <div style={{ padding: '12px 14px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                <div style={{ fontSize: 11, color: '#888', marginBottom: 8 }}>Generated logo (navbar)</div>
+                <img
+                  src={`data:image/png;base64,${generatedLogos.logo}`}
+                  alt="Generated logo"
+                  style={{ height: 40, maxWidth: '100%', objectFit: 'contain' as const }}
                 />
-                {file && (
-                  <img
-                    src={URL.createObjectURL(file)}
-                    alt={label}
-                    style={s.preview}
-                  />
-                )}
               </div>
-              <div style={s.fileHint}>{name}</div>
+
+              {/* Conversation history */}
+              {logoHistory.filter(m => m.role === 'user').length > 0 && (
+                <div style={{ padding: '10px 14px', background: '#fff', borderBottom: '1px solid #f0f0f0', maxHeight: 140, overflowY: 'auto' as const }}>
+                  {logoHistory.map((msg, i) => (
+                    msg.role === 'user' ? (
+                      <div key={i} style={{ fontSize: 12, color: '#555', marginBottom: 4 }}>
+                        <span style={{ fontWeight: 600, color: '#0ea5e9' }}>You: </span>{msg.content}
+                      </div>
+                    ) : null
+                  ))}
+                </div>
+              )}
+
+              {/* Refinement input */}
+              {step === 'basic' && (
+                <div style={{ display: 'flex', gap: 8, padding: '10px 14px', background: '#fff' }}>
+                  <input
+                    placeholder="Tell Gemini what to change, e.g. make it more vibrant..."
+                    style={{ ...s.input, flex: 1, fontSize: 13 }}
+                    value={logoRefinement}
+                    onChange={e => setLogoRefinement(e.target.value)}
+                    disabled={logoLoading}
+                    onKeyDown={e => { if (e.key === 'Enter' && logoRefinement.trim()) handleGenerateLogo(logoRefinement); }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleGenerateLogo(logoRefinement)}
+                    disabled={!logoRefinement.trim() || logoLoading}
+                    style={{
+                      padding: '8px 16px', borderRadius: 8, fontSize: 13, fontWeight: 600 as const,
+                      border: 'none', background: (!logoRefinement.trim() || logoLoading) ? '#e2e8f0' : '#0ea5e9',
+                      color: (!logoRefinement.trim() || logoLoading) ? '#aaa' : '#fff',
+                      cursor: (!logoRefinement.trim() || logoLoading) ? 'not-allowed' : 'pointer',
+                      whiteSpace: 'nowrap' as const, display: 'flex', alignItems: 'center' as const, gap: 6,
+                    }}
+                  >
+                    {logoLoading && <span style={{ ...s.spinner, border: '2px solid rgba(255,255,255,0.4)', borderTopColor: '#fff' }} />}
+                    {logoLoading ? '' : 'Refine'}
+                  </button>
+                </div>
+              )}
             </div>
-          ))}
+          )}
+
+          {/* Generate button */}
+          <div style={s.fieldGroup}>
+            <button
+              type="button"
+              onClick={() => { setLogoHistory([]); handleGenerateLogo(); }}
+              disabled={!attractionName || logoLoading || step !== 'basic'}
+              style={{
+                padding: '10px 20px', borderRadius: 8, fontSize: 14, fontWeight: 600 as const,
+                border: '1px solid #0ea5e9', background: logoLoading ? '#f0f9ff' : '#fff',
+                color: '#0ea5e9', cursor: (!attractionName || logoLoading || step !== 'basic') ? 'not-allowed' : 'pointer',
+                display: 'flex', alignItems: 'center' as const, gap: 8,
+              }}
+            >
+              {logoLoading && !logoRefinement && <span style={{ ...s.spinner, border: '2px solid #bae6fd', borderTopColor: '#0ea5e9' }} />}
+              {logoLoading && !logoRefinement ? 'Generating...' : generatedLogos ? 'Regenerate from Scratch' : 'Generate Logo with AI'}
+            </button>
+            <div style={s.fileHint}>Uses Gemini to create a "Powered by Klook" branded logo for navbar, footer, and favicon.</div>
+          </div>
+
+          {/* Manual upload override */}
+          <div style={{ marginTop: 4 }}>
+            <div style={{ fontSize: 11, color: '#aaa', marginBottom: 10 }}>Or upload manually (overrides AI-generated):</div>
+            {([
+              { label: 'Logo — Navbar', file: logoFile, setter: setLogoFile, name: 'logo.png' },
+              { label: 'Logo Light — Footer', file: logoLightFile, setter: setLogoLightFile, name: 'logo-light.png' },
+              { label: 'Logo Icon — Favicon', file: logoIconFile, setter: setLogoIconFile, name: 'logo-icon.svg' },
+            ] as const).map(({ label, file, setter, name }) => (
+              <div key={name} style={{ ...s.fieldGroup, marginBottom: 10 }}>
+                <label style={{ ...s.label, fontSize: 12, color: '#888' }}>{label}</label>
+                <div style={s.fileRow}>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    style={s.fileInput}
+                    onChange={e => setter(e.target.files?.[0] ?? null)}
+                    disabled={step !== 'basic'}
+                  />
+                  {file && (
+                    <img src={URL.createObjectURL(file)} alt={label} style={s.preview} />
+                  )}
+                </div>
+                <div style={s.fileHint}>{name}</div>
+              </div>
+            ))}
+          </div>
 
           {step === 'basic' && (
             <button
