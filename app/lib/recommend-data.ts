@@ -119,7 +119,8 @@ export const COUNTRY_RECOMMENDATIONS: Record<string, CountryRecommendation> = {
 };
 
 export const ALL_LANGUAGE_CODES = [
-  'en', 'zh-CN', 'zh-TW', 'ja', 'ko', 'ms', 'vi', 'de', 'fr',
+  'en', 'zh-CN', 'zh-TW', 'ja', 'ko', 'ru', 'hi', 'ms', 'vi', 'de', 'fr', 'lo',
+  'es', 'pt', 'ar', 'th', 'id', 'it', 'nl', 'tr',
 ];
 
 export const DEFAULT_RECOMMENDATION: CountryRecommendation = {
