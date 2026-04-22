@@ -39,31 +39,46 @@ async function generateAttractionIcon(attractionName: string, history: ChatMessa
   }
 
   const data = await response.json();
-  const content = data.choices?.[0]?.message?.content;
+  console.log('[generate-logo] raw response:', JSON.stringify(data, null, 2));
 
-  // Handle array content (multimodal response)
+  const message = data.choices?.[0]?.message;
+  const content = message?.content;
+
+  // Array of parts (multimodal)
   if (Array.isArray(content)) {
     for (const part of content) {
+      // image_url part
       if (part.type === 'image_url') {
         const url: string = part.image_url?.url ?? '';
-        if (url.startsWith('data:')) {
-          const base64 = url.split(',')[1];
-          return Buffer.from(base64, 'base64');
-        }
-        // Remote URL
+        if (url.startsWith('data:')) return Buffer.from(url.split(',')[1], 'base64');
         const imgRes = await fetch(url);
         return Buffer.from(await imgRes.arrayBuffer());
+      }
+      // inline_data part (Gemini native format sometimes surfaces here)
+      if (part.type === 'inline_data' || part.inline_data) {
+        const inline = part.inline_data ?? part;
+        return Buffer.from(inline.data, 'base64');
       }
     }
   }
 
-  // Handle string content with embedded base64
+  // String content with embedded data URI
   if (typeof content === 'string') {
     const match = content.match(/data:image\/[^;]+;base64,([A-Za-z0-9+/=]+)/);
     if (match) return Buffer.from(match[1], 'base64');
   }
 
-  throw new Error('No image found in Gemini response');
+  // Some OpenRouter wrappers put the image under message.image or message.images
+  if (message?.image) {
+    const img: string = message.image;
+    return Buffer.from(img.startsWith('data:') ? img.split(',')[1] : img, 'base64');
+  }
+  if (Array.isArray(message?.images) && message.images.length > 0) {
+    const img: string = message.images[0];
+    return Buffer.from(img.startsWith('data:') ? img.split(',')[1] : img, 'base64');
+  }
+
+  throw new Error(`No image found in Gemini response. Content type: ${typeof content}, keys: ${Object.keys(message ?? {}).join(', ')}`);
 }
 
 async function composeLogos(iconBuffer: Buffer): Promise<{
