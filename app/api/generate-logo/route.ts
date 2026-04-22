@@ -31,6 +31,7 @@ async function generateAttractionIcon(attractionName: string, history: ChatMessa
       model: 'google/gemini-3.1-flash-image-preview',
       messages,
       modalities: ['image', 'text'],
+      response_modalities: ['IMAGE', 'TEXT'],
     }),
   });
 
@@ -48,12 +49,18 @@ async function generateAttractionIcon(attractionName: string, history: ChatMessa
   // Array of parts (multimodal)
   if (Array.isArray(content)) {
     for (const part of content) {
-      // image_url part
+      // image_url part — url may be a string or an object with bytes/mime_type
       if (part.type === 'image_url') {
-        const url: string = part.image_url?.url ?? '';
-        if (url.startsWith('data:')) return Buffer.from(url.split(',')[1], 'base64');
-        const imgRes = await fetch(url);
-        return Buffer.from(await imgRes.arrayBuffer());
+        const rawUrl = part.image_url?.url;
+        if (typeof rawUrl === 'string') {
+          if (rawUrl.startsWith('data:')) return Buffer.from(rawUrl.split(',')[1], 'base64');
+          const imgRes = await fetch(rawUrl);
+          return Buffer.from(await imgRes.arrayBuffer());
+        }
+        // url is an object like { bytes: '...base64...', mime_type: 'image/png' }
+        if (rawUrl && typeof rawUrl === 'object' && rawUrl.bytes) {
+          return Buffer.from(rawUrl.bytes, 'base64');
+        }
       }
       // inline_data part (Gemini native format sometimes surfaces here)
       if (part.type === 'inline_data' || part.inline_data) {
@@ -71,12 +78,16 @@ async function generateAttractionIcon(attractionName: string, history: ChatMessa
 
   // Some OpenRouter wrappers put the image under message.image or message.images
   if (message?.image) {
-    const img: string = message.image;
-    return Buffer.from(img.startsWith('data:') ? img.split(',')[1] : img, 'base64');
+    const img = message.image;
+    if (typeof img === 'string') {
+      return Buffer.from(img.startsWith('data:') ? img.split(',')[1] : img, 'base64');
+    }
   }
   if (Array.isArray(message?.images) && message.images.length > 0) {
-    const img: string = message.images[0];
-    return Buffer.from(img.startsWith('data:') ? img.split(',')[1] : img, 'base64');
+    const img = message.images[0];
+    if (typeof img === 'string') {
+      return Buffer.from(img.startsWith('data:') ? img.split(',')[1] : img, 'base64');
+    }
   }
 
   throw new Error(`No image found in Gemini response. Content type: ${typeof content}, keys: ${Object.keys(message ?? {}).join(', ')}`);
