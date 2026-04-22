@@ -171,11 +171,26 @@ async function setupCloudflarePages(repoOwner: string, repoName: string, domain:
 
 /** Commit a file to the repo via GitHub Contents API */
 async function commitFileToRepo(repoFullName: string, path: string, contentBase64: string, message: string) {
+  let sha: string | undefined;
+  try {
+    const existing = await githubApi(`/repos/${repoFullName}/contents/${path}`);
+    if (typeof existing?.sha === 'string') {
+      sha = existing.sha;
+    }
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    // 404 means file does not exist yet, so create without sha.
+    if (!msg.includes('GitHub API error: 404')) {
+      throw e;
+    }
+  }
+
   await githubApi(`/repos/${repoFullName}/contents/${path}`, {
     method: 'PUT',
     body: JSON.stringify({
       message,
       content: contentBase64,
+      ...(sha ? { sha } : {}),
     }),
   });
   console.log(`[commitFile] ✓ ${path}`);
