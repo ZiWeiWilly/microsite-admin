@@ -17,6 +17,51 @@ function sanitizeHistory(history: unknown): ChatMessage[] {
   });
 }
 
+async function decodeImageFromUnknown(input: unknown): Promise<Buffer | null> {
+  if (!input) return null;
+
+  if (typeof input === 'string') {
+    if (input.startsWith('data:')) return Buffer.from(input.split(',')[1], 'base64');
+    return Buffer.from(input, 'base64');
+  }
+
+  if (typeof input !== 'object') return null;
+
+  const obj = input as {
+    url?: unknown;
+    image_url?: { url?: unknown } | unknown;
+    b64_json?: unknown;
+    bytes?: unknown;
+    data?: unknown;
+    inline_data?: { data?: unknown } | unknown;
+  };
+
+  const directBase64 =
+    (typeof obj.b64_json === 'string' && obj.b64_json)
+    || (typeof obj.bytes === 'string' && obj.bytes)
+    || (typeof obj.data === 'string' && obj.data);
+  if (directBase64) return Buffer.from(directBase64, 'base64');
+
+  if (obj.inline_data && typeof obj.inline_data === 'object') {
+    const inlineData = (obj.inline_data as { data?: unknown }).data;
+    if (typeof inlineData === 'string') return Buffer.from(inlineData, 'base64');
+  }
+
+  const urlCandidate =
+    (typeof obj.url === 'string' && obj.url)
+    || (typeof obj.image_url === 'object' && obj.image_url && typeof (obj.image_url as { url?: unknown }).url === 'string'
+      ? (obj.image_url as { url: string }).url
+      : null);
+  if (urlCandidate) {
+    if (urlCandidate.startsWith('data:')) return Buffer.from(urlCandidate.split(',')[1], 'base64');
+    const imgRes = await fetch(urlCandidate);
+    if (!imgRes.ok) return null;
+    return Buffer.from(await imgRes.arrayBuffer());
+  }
+
+  return null;
+}
+
 async function generateAttractionIcon(attractionName: string, history: ChatMessage[]): Promise<Buffer> {
   const systemPrompt = `Create a clean, modern logo icon for "${attractionName}". Requirements:
 - Square format, suitable for a website navbar
@@ -57,24 +102,8 @@ async function generateAttractionIcon(attractionName: string, history: ChatMessa
   // Array of parts (multimodal)
   if (Array.isArray(content)) {
     for (const part of content) {
-      // image_url part — url may be a string or an object with bytes/mime_type
-      if (part.type === 'image_url') {
-        const rawUrl = part.image_url?.url;
-        if (typeof rawUrl === 'string') {
-          if (rawUrl.startsWith('data:')) return Buffer.from(rawUrl.split(',')[1], 'base64');
-          const imgRes = await fetch(rawUrl);
-          return Buffer.from(await imgRes.arrayBuffer());
-        }
-        // url is an object like { bytes: '...base64...', mime_type: 'image/png' }
-        if (rawUrl && typeof rawUrl === 'object' && rawUrl.bytes) {
-          return Buffer.from(rawUrl.bytes, 'base64');
-        }
-      }
-      // inline_data part (Gemini native format sometimes surfaces here)
-      if (part.type === 'inline_data' || part.inline_data) {
-        const inline = part.inline_data ?? part;
-        return Buffer.from(inline.data, 'base64');
-      }
+      const decoded = await decodeImageFromUnknown(part);
+      if (decoded) return decoded;
     }
   }
 
@@ -86,15 +115,13 @@ async function generateAttractionIcon(attractionName: string, history: ChatMessa
 
   // Some OpenRouter wrappers put the image under message.image or message.images
   if (message?.image) {
-    const img = message.image;
-    if (typeof img === 'string') {
-      return Buffer.from(img.startsWith('data:') ? img.split(',')[1] : img, 'base64');
-    }
+    const decoded = await decodeImageFromUnknown(message.image);
+    if (decoded) return decoded;
   }
   if (Array.isArray(message?.images) && message.images.length > 0) {
-    const img = message.images[0];
-    if (typeof img === 'string') {
-      return Buffer.from(img.startsWith('data:') ? img.split(',')[1] : img, 'base64');
+    for (const img of message.images) {
+      const decoded = await decodeImageFromUnknown(img);
+      if (decoded) return decoded;
     }
   }
 
