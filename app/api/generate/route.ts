@@ -285,7 +285,7 @@ export async function POST(request: Request) {
     const imageFiles = [
       { file: logoFile, path: 'images/logo.png' },
       { file: logoLightFile, path: 'images/logo-light.png' },
-      { file: logoIconFile, path: 'images/logo-icon.svg' },
+      { file: logoIconFile, path: 'images/logo-icon.png' },
     ];
     for (const { file, path } of imageFiles) {
       if (file) {

@@ -353,12 +353,25 @@ export default function Home() {
             <div style={{ marginBottom: 16, borderRadius: 10, border: '1px solid #e2e8f0', overflow: 'hidden' }}>
               {/* Preview */}
               <div style={{ padding: '12px 14px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-                <div style={{ fontSize: 11, color: '#888', marginBottom: 8 }}>Generated logo (navbar)</div>
-                <img
-                  src={`data:image/png;base64,${generatedLogos.logo}`}
-                  alt="Generated logo"
-                  style={{ height: 40, maxWidth: '100%', objectFit: 'contain' as const }}
-                />
+                <div style={{ fontSize: 11, color: '#888', marginBottom: 10 }}>Generated logos</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 10 }}>
+                  {[
+                    { key: 'logo', label: 'Navbar (logo.png)', value: generatedLogos.logo, height: 40, bg: '#fff' },
+                    { key: 'logoLight', label: 'Footer Dark (logo-light.png)', value: generatedLogos.logoLight, height: 40, bg: '#0f172a' },
+                    { key: 'logoIcon', label: 'Favicon (logo-icon.png)', value: generatedLogos.logoIcon, height: 56, bg: '#fff' },
+                  ].map(item => (
+                    <div key={item.key} style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: 8, background: '#fff' }}>
+                      <div style={{ fontSize: 11, color: '#64748b', marginBottom: 6 }}>{item.label}</div>
+                      <div style={{ borderRadius: 6, background: item.bg, padding: 8, display: 'flex', alignItems: 'center' }}>
+                        <img
+                          src={`data:image/png;base64,${item.value}`}
+                          alt={item.label}
+                          style={{ height: item.height, maxWidth: '100%', objectFit: 'contain' as const }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
 
               {/* Conversation history */}
@@ -432,10 +445,10 @@ export default function Home() {
           <div style={{ marginTop: 4 }}>
             <div style={{ fontSize: 11, color: '#aaa', marginBottom: 10 }}>Or upload manually (overrides AI-generated):</div>
             {([
-              { label: 'Logo — Navbar', file: logoFile, setter: setLogoFile, name: 'logo.png' },
-              { label: 'Logo Light — Footer', file: logoLightFile, setter: setLogoLightFile, name: 'logo-light.png' },
-              { label: 'Logo Icon — Favicon', file: logoIconFile, setter: setLogoIconFile, name: 'logo-icon.svg' },
-            ] as const).map(({ label, file, setter, name }) => (
+              { label: 'Logo — Navbar', file: logoFile, setter: setLogoFile, name: 'logo.png', generated: generatedLogos?.logo, previewBg: '#fff' },
+              { label: 'Logo Light — Footer', file: logoLightFile, setter: setLogoLightFile, name: 'logo-light.png', generated: generatedLogos?.logoLight, previewBg: '#0f172a' },
+              { label: 'Logo Icon — Favicon', file: logoIconFile, setter: setLogoIconFile, name: 'logo-icon.png', generated: generatedLogos?.logoIcon, previewBg: '#fff' },
+            ] as const).map(({ label, file, setter, name, generated, previewBg }) => (
               <div key={name} style={{ ...s.fieldGroup, marginBottom: 10 }}>
                 <label style={{ ...s.label, fontSize: 12, color: '#888' }}>{label}</label>
                 <div style={s.fileRow}>
@@ -446,11 +459,36 @@ export default function Home() {
                     onChange={e => setter(e.target.files?.[0] ?? null)}
                     disabled={step !== 'basic'}
                   />
-                  {file && (
-                    <img src={URL.createObjectURL(file)} alt={label} style={s.preview} />
+                  {(file || generated) && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div style={{ borderRadius: 6, background: previewBg, padding: 6, border: '1px solid #e2e8f0' }}>
+                        <img
+                          src={file ? URL.createObjectURL(file) : `data:image/png;base64,${generated}`}
+                          alt={label}
+                          style={s.preview}
+                        />
+                      </div>
+                      {file && (
+                        <button
+                          type="button"
+                          onClick={() => setter(null)}
+                          style={{
+                            border: '1px solid #cbd5e1',
+                            background: '#fff',
+                            color: '#475569',
+                            borderRadius: 6,
+                            padding: '4px 8px',
+                            fontSize: 12,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Use AI version
+                        </button>
+                      )}
+                    </div>
                   )}
                 </div>
-                <div style={s.fileHint}>{name}</div>
+                <div style={s.fileHint}>{name}{file ? ' (manual override)' : generated ? ' (AI generated)' : ''}</div>
               </div>
             ))}
           </div>
