@@ -30,6 +30,7 @@ async function generateAttractionIcon(attractionName: string, history: ChatMessa
     body: JSON.stringify({
       model: 'google/gemini-3.1-flash-image-preview',
       messages,
+      modalities: ['image', 'text'],
     }),
   });
 
