@@ -7,6 +7,16 @@ const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY!;
 
 type ChatMessage = { role: 'user' | 'assistant'; content: string };
 
+function sanitizeHistory(history: unknown): ChatMessage[] {
+  if (!Array.isArray(history)) return [];
+  return history.filter((item): item is ChatMessage => {
+    if (!item || typeof item !== 'object') return false;
+    const role = (item as { role?: unknown }).role;
+    const content = (item as { content?: unknown }).content;
+    return (role === 'user' || role === 'assistant') && typeof content === 'string';
+  });
+}
+
 async function generateAttractionIcon(attractionName: string, history: ChatMessage[]): Promise<Buffer> {
   const systemPrompt = `Create a clean, modern logo icon for "${attractionName}". Requirements:
 - Square format, suitable for a website navbar
@@ -30,8 +40,6 @@ async function generateAttractionIcon(attractionName: string, history: ChatMessa
     body: JSON.stringify({
       model: 'google/gemini-3.1-flash-image-preview',
       messages,
-      modalities: ['image', 'text'],
-      response_modalities: ['IMAGE', 'TEXT'],
     }),
   });
 
@@ -159,7 +167,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'OPENROUTER_API_KEY not configured' }, { status: 500 });
     }
 
-    const { attractionName, history = [] } = await request.json() as { attractionName: string; history: ChatMessage[] };
+    const body = await request.json() as { attractionName?: string; history?: unknown };
+    const attractionName = body.attractionName ?? '';
+    const history = sanitizeHistory(body.history);
     if (!attractionName) {
       return NextResponse.json({ error: 'attractionName is required' }, { status: 400 });
     }
