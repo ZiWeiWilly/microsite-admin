@@ -71,10 +71,9 @@ async function generateAttractionIcon(attractionName: string, history: ChatMessa
 - No text in the image
 - Suitable for use at small sizes (favicon)`;
 
-  const messages: ChatMessage[] =
-    history.length > 0
-      ? history
-      : [{ role: 'user', content: systemPrompt }];
+  // Always keep the base image-generation prompt so refinement turns do not drift into text-only answers.
+  const userHistory = history.filter((msg) => msg.role === 'user' && msg.content.trim().length > 0);
+  const messages: ChatMessage[] = [{ role: 'user', content: systemPrompt }, ...userHistory];
 
   const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
@@ -204,9 +203,8 @@ export async function POST(request: Request) {
     const iconBuffer = await generateAttractionIcon(attractionName, history);
     const { logo, logoLight, logoIcon } = await composeLogos(iconBuffer);
 
-    // Return updated history so client can append the assistant's image turn
-    const assistantTurn: ChatMessage = { role: 'assistant', content: '[image generated]' };
-    const updatedHistory: ChatMessage[] = [...history, assistantTurn];
+    // Keep only user refinement turns in history; assistant image placeholders are not useful context.
+    const updatedHistory: ChatMessage[] = history.filter((msg) => msg.role === 'user' && msg.content.trim().length > 0);
 
     return NextResponse.json({
       logo: logo.toString('base64'),

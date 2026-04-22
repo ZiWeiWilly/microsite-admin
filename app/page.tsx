@@ -383,7 +383,11 @@ export default function Home() {
                     value={logoRefinement}
                     onChange={e => setLogoRefinement(e.target.value)}
                     disabled={logoLoading}
-                    onKeyDown={e => { if (e.key === 'Enter' && logoRefinement.trim()) handleGenerateLogo(logoRefinement); }}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                      }
+                    }}
                   />
                   <button
                     type="button"
