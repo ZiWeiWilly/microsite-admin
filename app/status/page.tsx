@@ -186,7 +186,27 @@ function StatusContent() {
             <p style={{ color: '#888' }}>Loading status...</p>
           )}
 
-          {data && (
+          {data?.status === 'no_runs' && (
+            <div style={s.failureBox}>
+              <p style={{ fontWeight: 700, fontSize: 15, marginBottom: 6 }}>No workflow run yet</p>
+              <p style={{ fontSize: 13, color: '#7f1d1d', marginBottom: 10 }}>
+                The repo was created, but the build workflow has not started.
+                This usually means the GitHub token is missing the
+                {' '}<code>workflow</code> / <code>Actions: read & write</code> permission.
+                You can trigger it manually from the Actions tab.
+              </p>
+              <a
+                href={`https://github.com/${repo}/actions`}
+                target="_blank"
+                rel="noopener"
+                style={{ ...s.link, fontSize: 13, color: '#dc2626' }}
+              >
+                Open GitHub Actions →
+              </a>
+            </div>
+          )}
+
+          {data && data.status !== 'no_runs' && (
             <>
               {/* Status + elapsed */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>

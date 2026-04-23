@@ -80,7 +80,7 @@ export default function Home() {
   const [generateLoading, setGenerateLoading] = useState(false);
 
   // Result
-  const [result, setResult] = useState<{ repoUrl?: string; statusUrl?: string; vercelProjectUrl?: string; error?: string } | null>(null);
+  const [result, setResult] = useState<{ repoUrl?: string; statusUrl?: string; vercelProjectUrl?: string; actionsUrl?: string; error?: string } | null>(null);
 
   async function handleAutoSettings(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -169,7 +169,11 @@ export default function Home() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setResult({ error: data.error || 'Generation failed' });
+        setResult({
+          error: data.error || 'Generation failed',
+          repoUrl: data.repoUrl,
+          actionsUrl: data.actionsUrl,
+        });
       } else {
         router.push(`/status?repo=${data.repoFullName}`);
       }
@@ -581,7 +585,21 @@ export default function Home() {
               </>
             )}
 
-            {result?.error && <div style={s.errorBox}>{result.error}</div>}
+            {result?.error && (
+              <div style={s.errorBox}>
+                <div>{result.error}</div>
+                {(result.repoUrl || result.actionsUrl) && (
+                  <div style={{ marginTop: 10, fontSize: 13, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                    {result.repoUrl && (
+                      <a href={result.repoUrl} target="_blank" rel="noopener">Open repo →</a>
+                    )}
+                    {result.actionsUrl && (
+                      <a href={result.actionsUrl} target="_blank" rel="noopener">Run workflow manually →</a>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </>
         )}
 

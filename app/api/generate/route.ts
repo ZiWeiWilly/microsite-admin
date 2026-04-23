@@ -365,17 +365,25 @@ export async function POST(request: Request) {
       await dispatchGenerateWorkflowWithRetry(repoFullName, defaultBranch, config);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
-      // Workflow can still fail if token lacks workflow/actions permissions.
-      return NextResponse.json({
-        repoUrl,
-        repoFullName,
-        warning: `Repo created but workflow trigger failed after retries: ${msg}. Check GITHUB_TOKEN permissions (repo + workflow/actions:write) and trigger manually from Actions if needed.`,
-        ...(cloudflareResult && {
-          pagesUrl: cloudflareResult.pagesUrl,
-          customDomain: cloudflareResult.customDomain,
-        }),
-        ...(cloudflareWarning && { cloudflareWarning }),
-      });
+      console.error('[generate] workflow dispatch failed after retries:', msg);
+      // Workflow dispatch most often fails when the token lacks the
+      // `workflow` scope (classic PAT) or `actions:write` (fine-grained PAT).
+      // Surface this as an error so the UI does not silently navigate to
+      // status polling that will never see a run.
+      return NextResponse.json(
+        {
+          error: `Repo created, but failed to trigger the build workflow: ${msg}. Please verify GITHUB_TOKEN has the "workflow" / "Actions: read & write" permission and re-run, or trigger the workflow manually from the repo's Actions tab.`,
+          repoUrl,
+          repoFullName,
+          actionsUrl: `${repoUrl}/actions`,
+          ...(cloudflareResult && {
+            pagesUrl: cloudflareResult.pagesUrl,
+            customDomain: cloudflareResult.customDomain,
+          }),
+          ...(cloudflareWarning && { cloudflareWarning }),
+        },
+        { status: 502 }
+      );
     }
 
     // Step 7: Get the workflow run URL
