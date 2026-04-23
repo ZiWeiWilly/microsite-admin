@@ -10,7 +10,7 @@ Return ONLY a valid JSON object with this exact structure (no markdown, no expla
   "countryName": "Thailand",
   "confidence": "high",
   "baseCurrency": "THB",
-  "languages": ["en", "zh-CN", "ms", "ko", "ja"],
+  "languages": ["en", "th", "zh-CN", "ko", "ja"],
   "colors": {
     "primary": "#0ea5e9",
     "secondary": "#06b6d4",
@@ -27,7 +27,7 @@ Rules:
   2. If the destination country's local language appears in the available list above, add it (e.g. "ja" for Japan, "ko" for Korea, "vi" for Vietnam)
   3. Research which countries send the most international tourists to this destination. Add languages spoken by those top visitor-origin countries (from the available list only).
   4. Maximum 6 languages total, no duplicates.
-  Example for Thailand: top tourist sources are China, Malaysia, Korea, Japan → ["en", "zh-CN", "ms", "ko", "ja"] (Thai is not in the available list so skipped)
+  Example for Thailand: local=th, top tourist sources are China, Korea, Japan → ["en", "th", "zh-CN", "ko", "ja"]
   Example for Japan: local=ja, top sources are China, South Korea, Taiwan, USA → ["en", "ja", "zh-CN", "ko", "zh-TW"]
 - colors: choose colors that fit the attraction's theme/vibe (water parks = blues, nature = greens, adventure = oranges/reds, cultural = purples/golds, etc.)`;
 
