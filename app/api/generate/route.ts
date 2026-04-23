@@ -25,7 +25,7 @@ function sleep(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-async function githubApi(endpoint: string, options: RequestInit = {}) {
+async function githubApi<T = any>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const res = await fetch(`https://api.github.com${endpoint}`, {
     ...options,
     headers: {
@@ -51,7 +51,7 @@ async function githubApi(endpoint: string, options: RequestInit = {}) {
     const message = typeof data.message === 'string' ? data.message : JSON.stringify(data);
     throw new Error(`GitHub API error: ${res.status} - ${message}`);
   }
-  return data;
+  return data as T;
 }
 
 async function dispatchGenerateWorkflowWithRetry(
