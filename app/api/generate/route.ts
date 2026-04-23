@@ -37,9 +37,19 @@ async function githubApi(endpoint: string, options: RequestInit = {}) {
     },
   });
 
-  const data = await res.json();
+  const raw = await res.text();
+  let data: Record<string, unknown> = {};
+  if (raw.trim()) {
+    try {
+      data = JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      data = { raw };
+    }
+  }
+
   if (!res.ok) {
-    throw new Error(`GitHub API error: ${res.status} - ${data.message || JSON.stringify(data)}`);
+    const message = typeof data.message === 'string' ? data.message : JSON.stringify(data);
+    throw new Error(`GitHub API error: ${res.status} - ${message}`);
   }
   return data;
 }
