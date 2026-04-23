@@ -291,9 +291,15 @@ export async function POST(request: Request) {
       }
     }
 
-    const repoFullName = repoData.full_name;
-    const repoUrl = repoData.html_url;
-    const defaultBranch = repoData.default_branch || 'main';
+    const repoFullName = typeof repoData.full_name === 'string' ? repoData.full_name : null;
+    const repoUrl = typeof repoData.html_url === 'string' ? repoData.html_url : null;
+    const defaultBranch =
+      typeof repoData.default_branch === 'string' && repoData.default_branch
+        ? repoData.default_branch
+        : 'main';
+    if (!repoFullName || !repoUrl) {
+      throw new Error('GitHub API returned invalid repository payload');
+    }
 
     // Step 2: Wait for repo to be ready (template generation is async)
     await new Promise(resolve => setTimeout(resolve, 5000));
@@ -302,7 +308,13 @@ export async function POST(request: Request) {
     let vercelWarning: string | undefined;
     let vercelProjectUrl: string | undefined;
     let vercelProjectId: string | undefined;
-    const repoOwner = repoData.owner?.login || TARGET_OWNER;
+    const repoOwner =
+      typeof repoData.owner === 'object' &&
+      repoData.owner !== null &&
+      'login' in repoData.owner &&
+      typeof repoData.owner.login === 'string'
+        ? repoData.owner.login
+        : TARGET_OWNER;
     if (VERCEL_TOKEN && repoOwner) {
       try {
         const vercel = await createVercelProject(repoName, repoOwner, repoName, defaultBranch);
