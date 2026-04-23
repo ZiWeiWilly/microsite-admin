@@ -54,6 +54,35 @@ async function githubApi<T = any>(endpoint: string, options: RequestInit = {}): 
   return data as T;
 }
 
+/**
+ * Wait until the branch actually exists on the new repo. Template generation
+ * is async on GitHub's side: the repo and its `default_branch` field show up
+ * before the ref is materialised, which is why dispatching too early hits
+ * "422 No ref found for: main".
+ */
+async function waitForBranchReady(
+  repoFullName: string,
+  branch: string,
+  maxAttempts = 20,
+  intervalMs = 3000
+) {
+  let lastError: Error | null = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      await githubApi(`/repos/${repoFullName}/branches/${branch}`);
+      return;
+    } catch (e: unknown) {
+      lastError = e instanceof Error ? e : new Error(String(e));
+      if (attempt < maxAttempts) {
+        await sleep(intervalMs);
+      }
+    }
+  }
+  throw new Error(
+    `Branch "${branch}" not ready after ${maxAttempts} attempts: ${lastError?.message ?? 'unknown error'}`
+  );
+}
+
 async function dispatchGenerateWorkflowWithRetry(
   repoFullName: string,
   ref: string,
@@ -301,8 +330,10 @@ export async function POST(request: Request) {
       throw new Error('GitHub API returned invalid repository payload');
     }
 
-    // Step 2: Wait for repo to be ready (template generation is async)
-    await new Promise(resolve => setTimeout(resolve, 5000));
+    // Step 2: Wait until the default branch is actually materialised.
+    // Template generation is async on GitHub's side, so we poll instead of
+    // a fixed sleep to avoid the "422 No ref found" race when dispatching.
+    await waitForBranchReady(repoFullName, defaultBranch);
 
     // Step 3: Create Vercel project linked to the GitHub repo
     let vercelWarning: string | undefined;
