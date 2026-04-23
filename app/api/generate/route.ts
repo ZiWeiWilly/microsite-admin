@@ -50,18 +50,12 @@ async function encryptSecret(publicKey: string, secretValue: string): Promise<st
   return Buffer.from(encrypted).toString('base64');
 }
 
-async function getVercelOrgId(): Promise<string> {
-  if (VERCEL_ORG_ID) return VERCEL_ORG_ID;
-  const res = await fetch('https://api.vercel.com/v2/user', {
-    headers: { Authorization: `Bearer ${VERCEL_TOKEN}` },
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(`Vercel user fetch failed: ${data.error?.message}`);
-  return data.user.id;
-}
-
-async function createVercelProject(projectName: string): Promise<{ id: string; orgId: string; url: string }> {
-  const orgId = await getVercelOrgId();
+async function createVercelProject(
+  projectName: string,
+  githubOwner: string,
+  githubRepo: string,
+  productionBranch: string
+): Promise<{ id: string; url: string }> {
   const url = new URL('https://api.vercel.com/v10/projects');
   if (VERCEL_ORG_ID) url.searchParams.set('teamId', VERCEL_ORG_ID);
 
@@ -73,10 +67,15 @@ async function createVercelProject(projectName: string): Promise<{ id: string; o
     },
     body: JSON.stringify({
       name: projectName,
+      gitRepository: {
+        type: 'github',
+        repo: `${githubOwner}/${githubRepo}`,
+      },
+      productionBranch,
       framework: null,
-      buildCommand: '',
+      buildCommand: 'npm run build',
       outputDirectory: '.',
-      installCommand: 'echo skip',
+      installCommand: 'npm install',
     }),
   });
 
@@ -84,10 +83,10 @@ async function createVercelProject(projectName: string): Promise<{ id: string; o
   if (!res.ok) {
     throw new Error(`Vercel API error: ${data.error?.message || JSON.stringify(data)}`);
   }
-  return { id: data.id, orgId, url: `https://${data.name}.vercel.app` };
+  return { id: data.id, url: `https://${data.name}.vercel.app` };
 }
 
-/** Set OPENROUTER_API_KEY and FIRECRAWL_API_KEY on the new repo */
+/** Set required runtime secrets on the newly generated repo */
 async function setRepoSecrets(repoFullName: string, extraSecrets: Record<string, string> = {}) {
   const secrets: Record<string, string> = { ...extraSecrets };
   if (process.env.OPENROUTER_API_KEY) secrets['OPENROUTER_API_KEY'] = process.env.OPENROUTER_API_KEY;
@@ -96,7 +95,7 @@ async function setRepoSecrets(repoFullName: string, extraSecrets: Record<string,
 
   console.log(`[setRepoSecrets] keys to set: ${Object.keys(secrets).join(', ') || 'none'}`);
   if (Object.keys(secrets).length === 0) {
-    console.warn('[setRepoSecrets] No secrets found in env vars — check OPENROUTER_API_KEY and FIRECRAWL_API_KEY in Vercel');
+    console.warn('[setRepoSecrets] No secrets found in env vars');
     return;
   }
 
@@ -244,44 +243,34 @@ export async function POST(request: Request) {
 
     const repoFullName = repoData.full_name;
     const repoUrl = repoData.html_url;
+    const defaultBranch = repoData.default_branch || 'main';
 
     // Step 2: Wait for repo to be ready (template generation is async)
     await new Promise(resolve => setTimeout(resolve, 5000));
 
-    // Step 3: Create Vercel project + auto-set secrets on new repo
-    const vercelExtraSecrets: Record<string, string> = {};
+    // Step 3: Create Vercel project linked to the GitHub repo
+    let vercelWarning: string | undefined;
     let vercelProjectUrl: string | undefined;
-    if (VERCEL_TOKEN) {
-      vercelExtraSecrets['VERCEL_TOKEN'] = VERCEL_TOKEN;
+    let vercelProjectId: string | undefined;
+    const repoOwner = repoData.owner?.login || TARGET_OWNER;
+    if (VERCEL_TOKEN && repoOwner) {
       try {
-        const vercel = await createVercelProject(repoName);
+        const vercel = await createVercelProject(repoName, repoOwner, repoName, defaultBranch);
+        vercelProjectId = vercel.id;
         vercelProjectUrl = vercel.url;
-        vercelExtraSecrets['VERCEL_ORG_ID'] = vercel.orgId;
-        vercelExtraSecrets['VERCEL_PROJECT_ID'] = vercel.id;
         console.log(`[vercel] ✓ project created: ${vercelProjectUrl}`);
       } catch (e: unknown) {
-        console.warn(`[vercel] project creation failed: ${e instanceof Error ? e.message : e}`);
+        vercelWarning = e instanceof Error ? e.message : String(e);
+        console.warn(`[vercel] project creation failed: ${vercelWarning}`);
       }
     }
-    await setRepoSecrets(repoFullName, vercelExtraSecrets);
+    const vercelSecrets: Record<string, string> = {};
+    if (VERCEL_TOKEN) vercelSecrets['VERCEL_TOKEN'] = VERCEL_TOKEN;
+    if (VERCEL_ORG_ID) vercelSecrets['VERCEL_ORG_ID'] = VERCEL_ORG_ID;
+    if (vercelProjectId) vercelSecrets['VERCEL_PROJECT_ID'] = vercelProjectId;
+    await setRepoSecrets(repoFullName, vercelSecrets);
 
-    // Step 4: Commit .vercelignore + logo images to the repo
-    const vercelIgnoreContent = [
-      '.claude/',
-      '.github/',
-      'scripts/',
-      'src/',
-      'node_modules/',
-      'package-lock.json',
-      '*.md',
-    ].join('\n');
-    await commitFileToRepo(
-      repoFullName,
-      '.vercelignore',
-      Buffer.from(vercelIgnoreContent).toString('base64'),
-      'Add .vercelignore to exclude non-web files from Vercel upload'
-    );
-
+    // Step 4: Commit logo images to the repo
     const imageFiles = [
       { file: logoFile, path: 'images/logo.png' },
       { file: logoLightFile, path: 'images/logo-light.png' },
@@ -314,7 +303,7 @@ export async function POST(request: Request) {
       await githubApi(`/repos/${repoFullName}/actions/workflows/generate-and-deploy.yml/dispatches`, {
         method: 'POST',
         body: JSON.stringify({
-          ref: 'master',
+          ref: defaultBranch,
           inputs: {
             config: JSON.stringify(config),
           },
@@ -353,6 +342,7 @@ export async function POST(request: Request) {
       runUrl,
       message: `Site generation started for ${config.attractionName}`,
       ...(vercelProjectUrl && { vercelProjectUrl }),
+      ...(vercelWarning && { vercelWarning }),
       ...(cloudflareResult && {
         pagesUrl: cloudflareResult.pagesUrl,
         customDomain: cloudflareResult.customDomain,
