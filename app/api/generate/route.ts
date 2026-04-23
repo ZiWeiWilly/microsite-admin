@@ -55,31 +55,39 @@ async function githubApi<T = any>(endpoint: string, options: RequestInit = {}): 
 }
 
 /**
- * Wait until the branch actually exists on the new repo. Template generation
- * is async on GitHub's side: the repo and its `default_branch` field show up
- * before the ref is materialised, which is why dispatching too early hits
- * "422 No ref found for: main".
+ * Wait until a template-generated repo is fully materialised and return its
+ * actual default branch. Two reasons we cannot trust the initial
+ * POST /generate response:
+ *  1. `default_branch` can be empty for a few seconds while GitHub sets up
+ *     the repo, so blindly defaulting to "main" is unsafe.
+ *  2. The branch ref itself may not exist yet even after `default_branch`
+ *     is populated, which caused "422 No ref found for: main" when
+ *     dispatching too early.
  */
-async function waitForBranchReady(
+async function waitForRepoReady(
   repoFullName: string,
-  branch: string,
-  maxAttempts = 20,
+  maxAttempts = 30,
   intervalMs = 3000
-) {
+): Promise<string> {
   let lastError: Error | null = null;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      await githubApi(`/repos/${repoFullName}/branches/${branch}`);
-      return;
+      const repo = await githubApi<{ default_branch?: string }>(`/repos/${repoFullName}`);
+      const branch = repo.default_branch;
+      if (branch) {
+        // Verify the branch ref is actually reachable before returning.
+        await githubApi(`/repos/${repoFullName}/branches/${branch}`);
+        return branch;
+      }
     } catch (e: unknown) {
       lastError = e instanceof Error ? e : new Error(String(e));
-      if (attempt < maxAttempts) {
-        await sleep(intervalMs);
-      }
+    }
+    if (attempt < maxAttempts) {
+      await sleep(intervalMs);
     }
   }
   throw new Error(
-    `Branch "${branch}" not ready after ${maxAttempts} attempts: ${lastError?.message ?? 'unknown error'}`
+    `Repo "${repoFullName}" not ready after ${maxAttempts} attempts: ${lastError?.message ?? 'unknown error'}`
   );
 }
 
@@ -322,18 +330,15 @@ export async function POST(request: Request) {
 
     const repoFullName = typeof repoData.full_name === 'string' ? repoData.full_name : null;
     const repoUrl = typeof repoData.html_url === 'string' ? repoData.html_url : null;
-    const defaultBranch =
-      typeof repoData.default_branch === 'string' && repoData.default_branch
-        ? repoData.default_branch
-        : 'main';
     if (!repoFullName || !repoUrl) {
       throw new Error('GitHub API returned invalid repository payload');
     }
 
-    // Step 2: Wait until the default branch is actually materialised.
-    // Template generation is async on GitHub's side, so we poll instead of
-    // a fixed sleep to avoid the "422 No ref found" race when dispatching.
-    await waitForBranchReady(repoFullName, defaultBranch);
+    // Step 2: Wait for the repo to be fully materialised and resolve the
+    // actual default branch. We cannot trust the initial POST /generate
+    // payload because GitHub fills default_branch asynchronously and the
+    // template may not even use "main".
+    const defaultBranch = await waitForRepoReady(repoFullName);
 
     // Step 3: Create Vercel project linked to the GitHub repo
     let vercelWarning: string | undefined;
