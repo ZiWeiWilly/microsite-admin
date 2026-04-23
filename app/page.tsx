@@ -3,22 +3,11 @@
 import { useState, useEffect, useRef, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSession, signOut } from 'next-auth/react';
+import { ALL_LANGUAGES } from './lib/recommend-data';
 
 const CURRENCIES = [
   'THB', 'USD', 'EUR', 'GBP', 'JPY', 'CNY', 'KRW', 'TWD',
   'HKD', 'SGD', 'MYR', 'PHP', 'IDR', 'VND', 'INR', 'RUB', 'AUD',
-];
-
-const ALL_LANGUAGES = [
-  { code: 'en', label: 'English' },
-  { code: 'zh-CN', label: '简体中文' },
-  { code: 'zh-TW', label: '繁體中文' },
-  { code: 'ja', label: '日本語' },
-  { code: 'ko', label: '한국어' },
-  { code: 'ms', label: 'Bahasa Melayu' },
-  { code: 'vi', label: 'Tiếng Việt' },
-  { code: 'de', label: 'Deutsch' },
-  { code: 'fr', label: 'Français' },
 ];
 
 type Step = 'basic' | 'settings' | 'done';
@@ -47,7 +36,7 @@ export default function Home() {
 
   // Settings (auto-filled, user-editable)
   const [baseCurrency, setBaseCurrency] = useState('THB');
-  const [languages, setLanguages] = useState<string[]>(ALL_LANGUAGES.map(l => l.code));
+  const [languages, setLanguages] = useState<string[]>(['en']);
   const [colors, setColors] = useState({ primary: '#0ea5e9', secondary: '#06b6d4', accent: '#f59e0b' });
   const [countryName, setCountryName] = useState('');
   const [confidence, setConfidence] = useState('');

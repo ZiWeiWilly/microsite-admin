@@ -118,10 +118,30 @@ export const COUNTRY_RECOMMENDATIONS: Record<string, CountryRecommendation> = {
   MV: { countryName: 'Maldives', baseCurrency: 'USD', languages: ['en', 'zh-CN', 'ja', 'ko'] },
 };
 
-export const ALL_LANGUAGE_CODES = [
-  'en', 'zh-CN', 'zh-TW', 'ja', 'ko', 'ru', 'hi', 'ms', 'vi', 'de', 'fr', 'lo',
-  'es', 'pt', 'ar', 'th', 'id', 'it', 'nl', 'tr',
+export const ALL_LANGUAGES: { code: string; label: string }[] = [
+  { code: 'en', label: 'English' },
+  { code: 'zh-CN', label: '简体中文' },
+  { code: 'zh-TW', label: '繁體中文' },
+  { code: 'ja', label: '日本語' },
+  { code: 'ko', label: '한국어' },
+  { code: 'th', label: 'ไทย' },
+  { code: 'ms', label: 'Bahasa Melayu' },
+  { code: 'id', label: 'Bahasa Indonesia' },
+  { code: 'vi', label: 'Tiếng Việt' },
+  { code: 'hi', label: 'हिन्दी' },
+  { code: 'ru', label: 'Русский' },
+  { code: 'ar', label: 'العربية' },
+  { code: 'de', label: 'Deutsch' },
+  { code: 'fr', label: 'Français' },
+  { code: 'es', label: 'Español' },
+  { code: 'pt', label: 'Português' },
+  { code: 'it', label: 'Italiano' },
+  { code: 'nl', label: 'Nederlands' },
+  { code: 'tr', label: 'Türkçe' },
+  { code: 'lo', label: 'ລາວ' },
 ];
+
+export const ALL_LANGUAGE_CODES = ALL_LANGUAGES.map(l => l.code);
 
 export const DEFAULT_RECOMMENDATION: CountryRecommendation = {
   countryName: 'Unknown',

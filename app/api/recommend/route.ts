@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getRecommendations } from '../../lib/recommend';
-
-const ALL_LANGUAGE_CODES = ['en', 'zh-CN', 'zh-TW', 'ja', 'ko', 'ru', 'hi', 'ms', 'vi', 'de', 'fr', 'lo', 'es', 'pt', 'ar', 'th', 'id', 'it', 'nl', 'tr'];
+import { ALL_LANGUAGE_CODES } from '../../lib/recommend-data';
 
 const SYSTEM_PROMPT = `You are a travel attraction configuration expert. Given a Klook URL and attraction name, determine the best settings for a multilingual microsite.
 
