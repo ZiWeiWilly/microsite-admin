@@ -21,6 +21,10 @@ interface SiteConfig {
   headScripts?: string;
 }
 
+function sleep(ms: number) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 async function githubApi(endpoint: string, options: RequestInit = {}) {
   const res = await fetch(`https://api.github.com${endpoint}`, {
     ...options,
@@ -38,6 +42,37 @@ async function githubApi(endpoint: string, options: RequestInit = {}) {
     throw new Error(`GitHub API error: ${res.status} - ${data.message || JSON.stringify(data)}`);
   }
   return data;
+}
+
+async function dispatchGenerateWorkflowWithRetry(
+  repoFullName: string,
+  ref: string,
+  config: SiteConfig,
+  maxAttempts = 6
+) {
+  let lastError: Error | null = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      // Workflow file can take a short while to become addressable after template generation.
+      await githubApi(`/repos/${repoFullName}/actions/workflows/generate-and-deploy.yml`);
+      await githubApi(`/repos/${repoFullName}/actions/workflows/generate-and-deploy.yml/dispatches`, {
+        method: 'POST',
+        body: JSON.stringify({
+          ref,
+          inputs: {
+            config: JSON.stringify(config),
+          },
+        }),
+      });
+      return;
+    } catch (e: unknown) {
+      lastError = e instanceof Error ? e : new Error(String(e));
+      if (attempt < maxAttempts) {
+        await sleep(5000);
+      }
+    }
+  }
+  throw lastError || new Error('Unknown workflow dispatch error');
 }
 
 /** Encrypt a secret value with the repo's public key (required by GitHub Secrets API) */
@@ -300,22 +335,14 @@ export async function POST(request: Request) {
 
     // Step 6: Trigger the generate-and-deploy workflow
     try {
-      await githubApi(`/repos/${repoFullName}/actions/workflows/generate-and-deploy.yml/dispatches`, {
-        method: 'POST',
-        body: JSON.stringify({
-          ref: defaultBranch,
-          inputs: {
-            config: JSON.stringify(config),
-          },
-        }),
-      });
+      await dispatchGenerateWorkflowWithRetry(repoFullName, defaultBranch, config);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
-      // Workflow might not be available yet if repo is still being created
+      // Workflow can still fail if token lacks workflow/actions permissions.
       return NextResponse.json({
         repoUrl,
         repoFullName,
-        warning: `Repo created but workflow trigger failed: ${msg}. You may need to trigger the workflow manually from the Actions tab.`,
+        warning: `Repo created but workflow trigger failed after retries: ${msg}. Check GITHUB_TOKEN permissions (repo + workflow/actions:write) and trigger manually from Actions if needed.`,
         ...(cloudflareResult && {
           pagesUrl: cloudflareResult.pagesUrl,
           customDomain: cloudflareResult.customDomain,
