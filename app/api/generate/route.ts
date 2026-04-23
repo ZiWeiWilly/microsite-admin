@@ -145,7 +145,12 @@ async function setRepoSecrets(repoFullName: string, extraSecrets: Record<string,
   }
 
   // Get repo public key for encryption
-  const { key, key_id } = await githubApi(`/repos/${repoFullName}/actions/secrets/public-key`);
+  const publicKeyData = await githubApi(`/repos/${repoFullName}/actions/secrets/public-key`);
+  const key = typeof publicKeyData.key === 'string' ? publicKeyData.key : null;
+  const key_id = typeof publicKeyData.key_id === 'string' ? publicKeyData.key_id : null;
+  if (!key || !key_id) {
+    throw new Error('GitHub API returned invalid repository public key payload');
+  }
 
   for (const [name, value] of Object.entries(secrets)) {
     const encryptedValue = await encryptSecret(key, value);

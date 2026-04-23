@@ -8,6 +8,7 @@ An internal tool for Klook employees to automate the creation of affiliate landi
 - Two-step form: enter basic info → review settings
 - AI-powered recommendations for currency, languages, and brand colors (via OpenRouter Gemini)
 - Automatic GitHub repository creation from a template
+- Automatic Vercel project creation linked to the new GitHub repository
 - Logo and favicon upload to the repository
 - GitHub Actions workflow dispatch
 - Cloudflare Pages integration with automatic custom domain binding
@@ -52,6 +53,8 @@ cp .env.example .env.local
 | `TEMPLATE_OWNER` | GitHub owner of the template repository | Yes |
 | `TEMPLATE_REPO` | Template repository name | Yes |
 | `TARGET_OWNER` | GitHub owner where new repositories will be created | Yes |
+| `VERCEL_TOKEN` | Vercel token used to create/check projects (scope: projects) | No |
+| `VERCEL_ORG_ID` | Vercel team ID (required if deploying under a team account) | No |
 | `CLOUDFLARE_ACCOUNT_ID` | Cloudflare account ID | No |
 | `CLOUDFLARE_API_TOKEN` | Cloudflare API token (requires Pages: Edit permission) | No |
 | `OPENROUTER_API_KEY` | OpenRouter API key (for AI recommendations) | No |
