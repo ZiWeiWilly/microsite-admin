@@ -25,6 +25,12 @@ interface StatusData {
   workflowName: string;
   jobs: Job[];
   siteUrl?: string;
+  previewUrl?: string;
+  previewState?: string;
+  previewCommitSha?: string;
+  prNumber?: number;
+  prUrl?: string;
+  branchName?: string;
   message?: string;
   error?: string;
 }
@@ -47,9 +53,11 @@ const EDIT_STEP_LABELS: Record<string, string | null> = {
   'Set up job': null,
   'Complete job': null,
   'Run actions/checkout@v4': 'Cloning your repository',
+  'Prepare branch': 'Preparing edit branch',
   'Download screenshot': 'Loading your reference screenshot',
   'Run Claude Code': 'AI is editing your site ✨',
   'Commit and push': 'Committing changes',
+  'Ensure PR exists': 'Opening pull request',
 };
 
 function getFriendlyStepName(name: string, type: 'generate' | 'edit'): string | null {
@@ -114,21 +122,34 @@ function StatusContent() {
   const searchParams = useSearchParams();
   const repo = searchParams.get('repo');
   const type = searchParams.get('type') === 'edit' ? 'edit' : 'generate';
+  const initialPageUrl = searchParams.get('pageUrl') || '';
   const [data, setData] = useState<StatusData | null>(null);
   const [fetchError, setFetchError] = useState('');
+  const [actionError, setActionError] = useState('');
+  const [actionMessage, setActionMessage] = useState('');
+  const [actionBusy, setActionBusy] = useState<'approve' | 'discard' | 'refine' | null>(null);
+  const [showRefine, setShowRefine] = useState(false);
+  const [refinePageUrl, setRefinePageUrl] = useState(initialPageUrl);
+  const [refineRequirements, setRefineRequirements] = useState('');
+  const [refineAreaDescription, setRefineAreaDescription] = useState('');
+  const [refineScreenshot, setRefineScreenshot] = useState<File | null>(null);
+  const [merged, setMerged] = useState(false);
   const elapsed = useElapsed(data?.createdAt);
 
   const fetchStatus = useCallback(async () => {
     if (!repo) return;
     try {
-      const res = await fetch(`/api/status?repo=${encodeURIComponent(repo)}`);
+      const res = await fetch(`/api/status?repo=${encodeURIComponent(repo)}&type=${type}`);
       const json = await res.json();
       if (json.error) setFetchError(json.error);
-      else setData(json);
+      else {
+        setData(json);
+        setFetchError('');
+      }
     } catch {
       setFetchError('Failed to fetch status');
     }
-  }, [repo]);
+  }, [repo, type]);
 
   useEffect(() => {
     fetchStatus();
@@ -156,6 +177,116 @@ function StatusContent() {
   const isSuccess = data?.conclusion === 'success';
   const isFailure = data?.conclusion === 'failure';
   const activeStepLabel = visibleSteps.find(s => s.status === 'in_progress')?.label;
+  const previewReady = data?.previewState === 'READY' && !!data.previewUrl;
+  const hasOpenEditPr = type === 'edit' && Boolean(data?.prNumber);
+
+  useEffect(() => {
+    if (type !== 'edit') return;
+    if (showRefine) return;
+    if (!data) return;
+    if (!refinePageUrl && data.siteUrl) {
+      setRefinePageUrl(data.siteUrl);
+    }
+  }, [data, type, showRefine, refinePageUrl]);
+
+  async function handleApprove() {
+    if (!repo || !data?.prNumber) return;
+    setActionBusy('approve');
+    setActionError('');
+    setActionMessage('');
+    try {
+      const res = await fetch('/api/edit/approve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ repo, prNumber: data.prNumber }),
+      });
+      const json = await res.json();
+      if (!res.ok || json.error) throw new Error(json.error || `Approve failed: ${res.status}`);
+      setMerged(true);
+      setShowRefine(false);
+      setActionMessage('Merged successfully. Production deployment is starting.');
+      await fetchStatus();
+    } catch (e: unknown) {
+      setActionError(e instanceof Error ? e.message : 'Failed to merge PR');
+    } finally {
+      setActionBusy(null);
+    }
+  }
+
+  async function handleDiscard() {
+    if (!repo || !data?.prNumber) return;
+    const confirmed = window.confirm('Discard this AI edit? This will close the PR and delete its branch.');
+    if (!confirmed) return;
+    setActionBusy('discard');
+    setActionError('');
+    setActionMessage('');
+    try {
+      const res = await fetch('/api/edit/discard', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ repo, prNumber: data.prNumber, branch: data.branchName }),
+      });
+      const json = await res.json();
+      if (!res.ok || json.error) throw new Error(json.error || `Discard failed: ${res.status}`);
+      setActionMessage('AI edit discarded.');
+      window.location.href = '/';
+    } catch (e: unknown) {
+      setActionError(e instanceof Error ? e.message : 'Failed to discard PR');
+      setActionBusy(null);
+    }
+  }
+
+  function handleRefineScreenshot(file: File | null) {
+    if (!file) {
+      setRefineScreenshot(null);
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setActionError('Screenshot exceeds 5 MB. Please use a smaller file.');
+      return;
+    }
+    setActionError('');
+    setRefineScreenshot(file);
+  }
+
+  async function handleRefineSubmit() {
+    if (!refinePageUrl.trim()) {
+      setActionError('Please enter the page URL to refine.');
+      return;
+    }
+    if (!refineRequirements.trim()) {
+      setActionError('Please describe what should change in this refinement.');
+      return;
+    }
+    setActionBusy('refine');
+    setActionError('');
+    setActionMessage('');
+    try {
+      const formData = new FormData();
+      formData.append('repo', repo || '');
+      formData.append('pageUrl', refinePageUrl.trim());
+      formData.append('requirements', refineRequirements.trim());
+      if (refineAreaDescription.trim()) formData.append('areaDescription', refineAreaDescription.trim());
+      if (refineScreenshot) formData.append('screenshot', refineScreenshot);
+      if (data?.branchName) {
+        formData.append('previousSummary', `Continue refining branch ${data.branchName}.`);
+      }
+      const res = await fetch('/api/edit', { method: 'POST', body: formData });
+      const json = await res.json();
+      if (!res.ok || json.error) throw new Error(json.error || `Refine failed: ${res.status}`);
+      setShowRefine(false);
+      setRefineRequirements('');
+      setRefineAreaDescription('');
+      setRefineScreenshot(null);
+      setMerged(false);
+      setActionMessage('Refinement dispatched. Preview will update after workflow completes.');
+      await fetchStatus();
+    } catch (e: unknown) {
+      setActionError(e instanceof Error ? e.message : 'Failed to dispatch refinement');
+    } finally {
+      setActionBusy(null);
+    }
+  }
 
   if (!repo) {
     return (
@@ -190,6 +321,16 @@ function StatusContent() {
           {fetchError && (
             <div style={s.errorBox}>
               <strong>Error:</strong> {fetchError}
+            </div>
+          )}
+          {actionError && (
+            <div style={s.errorBox}>
+              <strong>Error:</strong> {actionError}
+            </div>
+          )}
+          {actionMessage && (
+            <div style={s.infoBox}>
+              {actionMessage}
             </div>
           )}
 
@@ -282,37 +423,148 @@ function StatusContent() {
 
               {/* Success */}
               {isSuccess && (
-                <div style={s.successBox}>
-                  <p style={{ fontWeight: 700, fontSize: 16, marginBottom: 8 }}>
-                    {type === 'edit' ? 'Edit applied — redeploying…' : 'Your site is live!'}
-                  </p>
-                  {data.siteUrl && (
-                    <p style={{ marginBottom: 8 }}>
-                      <a href={data.siteUrl} target="_blank" rel="noopener" style={{ ...s.link, fontWeight: 600 }}>
-                        {data.siteUrl} &rarr;
-                      </a>
+                type === 'edit' ? (
+                  <div style={s.successBox}>
+                    <p style={{ fontWeight: 700, fontSize: 16, marginBottom: 8 }}>
+                      {merged ? 'Merged to production' : 'AI changes are ready for review'}
                     </p>
-                  )}
-                  <p style={{ fontSize: 13, color: '#166534', marginBottom: 12 }}>
-                    {type === 'edit'
-                      ? 'The AI has committed your changes. It may take a few minutes for the new version to go live.'
-                      : 'It may take a few minutes for the site to be fully accessible.'}
-                  </p>
-                  {repo && (
-                    <a
-                      href={`/edit?repo=${encodeURIComponent(repo)}${data.siteUrl ? `&siteUrl=${encodeURIComponent(data.siteUrl)}` : ''}`}
-                      style={s.editButton}
-                    >
-                      ✨ Edit this site with AI
-                    </a>
-                  )}
-                </div>
+                    {hasOpenEditPr && (
+                      <p style={{ fontSize: 13, color: '#166534', marginBottom: 10 }}>
+                        PR #{data?.prNumber}
+                        {data?.prUrl ? (
+                          <>
+                            {' '}· <a href={data.prUrl} target="_blank" rel="noopener" style={s.link}>Open PR</a>
+                          </>
+                        ) : null}
+                      </p>
+                    )}
+
+                    {data?.previewUrl ? (
+                      <div style={s.previewPanel}>
+                        <p style={{ marginBottom: 6, fontSize: 13, color: '#166534' }}>
+                          Preview status: {data.previewState || 'UNKNOWN'}
+                        </p>
+                        <a href={data.previewUrl} target="_blank" rel="noopener" style={{ ...s.link, fontWeight: 600 }}>
+                          Open preview ↗
+                        </a>
+                      </div>
+                    ) : data?.previewState === 'UNAVAILABLE' ? (
+                      <p style={{ fontSize: 13, color: '#166534', marginBottom: 10 }}>
+                        Preview is unavailable because `VERCEL_TOKEN` is not configured on microsite-admin.
+                      </p>
+                    ) : (
+                      <p style={{ fontSize: 13, color: '#166534', marginBottom: 10 }}>
+                        Preview deployment is still being prepared. Keep this page open and it will refresh automatically.
+                      </p>
+                    )}
+
+                    {!merged && hasOpenEditPr && (
+                      <div style={s.actionRow}>
+                        <button
+                          type="button"
+                          onClick={handleApprove}
+                          disabled={!previewReady || actionBusy !== null}
+                          style={s.primaryButton(actionBusy !== null || !previewReady)}
+                        >
+                          {actionBusy === 'approve' ? 'Merging…' : 'Approve & Merge'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setShowRefine(v => !v)}
+                          disabled={actionBusy !== null}
+                          style={s.secondaryButton(actionBusy !== null)}
+                        >
+                          {showRefine ? 'Cancel Refine' : 'Refine'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleDiscard}
+                          disabled={actionBusy !== null}
+                          style={s.dangerButton(actionBusy !== null)}
+                        >
+                          {actionBusy === 'discard' ? 'Discarding…' : 'Discard'}
+                        </button>
+                      </div>
+                    )}
+
+                    {showRefine && (
+                      <div style={s.refineBox}>
+                        <p style={{ fontSize: 13, color: '#166534', marginBottom: 8 }}>
+                          Add more instructions. The AI will continue on the same PR branch.
+                        </p>
+                        <input
+                          type="url"
+                          value={refinePageUrl}
+                          onChange={e => setRefinePageUrl(e.target.value)}
+                          placeholder="https://your-site.vercel.app/path"
+                          style={s.input}
+                          disabled={actionBusy !== null}
+                        />
+                        <input
+                          type="text"
+                          value={refineAreaDescription}
+                          onChange={e => setRefineAreaDescription(e.target.value)}
+                          placeholder="Area to adjust (optional)"
+                          style={{ ...s.input, marginTop: 8 }}
+                          disabled={actionBusy !== null}
+                        />
+                        <textarea
+                          value={refineRequirements}
+                          onChange={e => setRefineRequirements(e.target.value)}
+                          placeholder="What should change in this refinement?"
+                          style={{ ...s.textarea, marginTop: 8 }}
+                          rows={4}
+                          disabled={actionBusy !== null}
+                        />
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={e => handleRefineScreenshot(e.target.files?.[0] ?? null)}
+                          style={{ ...s.fileInput, marginTop: 8 }}
+                          disabled={actionBusy !== null}
+                        />
+                        <button
+                          type="button"
+                          onClick={handleRefineSubmit}
+                          disabled={actionBusy !== null}
+                          style={{ ...s.primaryButton(actionBusy !== null), marginTop: 10 }}
+                        >
+                          {actionBusy === 'refine' ? 'Dispatching refinement…' : 'Submit refinement'}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div style={s.successBox}>
+                    <p style={{ fontWeight: 700, fontSize: 16, marginBottom: 8 }}>Your site is live!</p>
+                    {data.siteUrl && (
+                      <p style={{ marginBottom: 8 }}>
+                        <a href={data.siteUrl} target="_blank" rel="noopener" style={{ ...s.link, fontWeight: 600 }}>
+                          {data.siteUrl} &rarr;
+                        </a>
+                      </p>
+                    )}
+                    <p style={{ fontSize: 13, color: '#166534', marginBottom: 12 }}>
+                      It may take a few minutes for the site to be fully accessible.
+                    </p>
+                    {repo && (
+                      <a
+                        href={`/edit?repo=${encodeURIComponent(repo)}${data.siteUrl ? `&siteUrl=${encodeURIComponent(data.siteUrl)}` : ''}`}
+                        style={s.editButton}
+                      >
+                        ✨ Edit this site with AI
+                      </a>
+                    )}
+                  </div>
+                )
               )}
 
               {/* Failure */}
               {isFailure && (
                 <div style={s.failureBox}>
-                  <p style={{ fontWeight: 700, fontSize: 15, marginBottom: 6 }}>Generation failed</p>
+                  <p style={{ fontWeight: 700, fontSize: 15, marginBottom: 6 }}>
+                    {type === 'edit' ? 'AI edit failed' : 'Generation failed'}
+                  </p>
                   <p style={{ fontSize: 13, color: '#7f1d1d', marginBottom: 10 }}>
                     Something went wrong during the process. Please check the details on GitHub or contact your technical team.
                   </p>
@@ -343,6 +595,25 @@ const s = {
   subtitle: { fontSize: 13, color: '#888', fontFamily: 'monospace' },
   backLink: { display: 'inline-block', marginBottom: 16, color: '#0ea5e9', textDecoration: 'none' as const, fontSize: 14 },
   link: { color: '#0ea5e9', textDecoration: 'none' as const },
+  input: {
+    width: '100%',
+    padding: '10px 12px',
+    fontSize: 14,
+    border: '1px solid #d1d5db',
+    borderRadius: 8,
+    boxSizing: 'border-box' as const,
+  },
+  textarea: {
+    width: '100%',
+    padding: 12,
+    fontSize: 14,
+    border: '1px solid #d1d5db',
+    borderRadius: 8,
+    boxSizing: 'border-box' as const,
+    resize: 'vertical' as const,
+    fontFamily: 'inherit',
+  },
+  fileInput: { display: 'block', fontSize: 14, color: '#555' },
   badge: (conclusion: string | null) => ({
     display: 'inline-block', padding: '4px 12px', borderRadius: 20, fontSize: 12, fontWeight: 600 as const,
     background: conclusion === 'success' ? '#dcfce7' : conclusion === 'failure' ? '#fee2e2' : '#fef3c7',
@@ -362,11 +633,65 @@ const s = {
     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
     borderRadius: 6,
   },
+  actionRow: { display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' as const },
+  primaryButton: (disabled: boolean) => ({
+    padding: '10px 14px',
+    fontSize: 13,
+    fontWeight: 600 as const,
+    background: disabled ? '#93c5fd' : '#0284c7',
+    color: '#fff',
+    border: 'none',
+    borderRadius: 8,
+    cursor: disabled ? 'not-allowed' as const : 'pointer' as const,
+  }),
+  secondaryButton: (disabled: boolean) => ({
+    padding: '10px 14px',
+    fontSize: 13,
+    fontWeight: 600 as const,
+    background: disabled ? '#e5e7eb' : '#f3f4f6',
+    color: '#111827',
+    border: '1px solid #d1d5db',
+    borderRadius: 8,
+    cursor: disabled ? 'not-allowed' as const : 'pointer' as const,
+  }),
+  dangerButton: (disabled: boolean) => ({
+    padding: '10px 14px',
+    fontSize: 13,
+    fontWeight: 600 as const,
+    background: disabled ? '#fecaca' : '#dc2626',
+    color: '#fff',
+    border: 'none',
+    borderRadius: 8,
+    cursor: disabled ? 'not-allowed' as const : 'pointer' as const,
+  }),
+  previewPanel: {
+    marginBottom: 10,
+    padding: 10,
+    background: '#ecfeff',
+    border: '1px solid #a5f3fc',
+    borderRadius: 8,
+  },
+  refineBox: {
+    marginTop: 12,
+    padding: 12,
+    background: '#f0fdf4',
+    border: '1px solid #bbf7d0',
+    borderRadius: 8,
+  },
   successBox: { marginTop: 20, padding: 20, background: '#f0fdf4', borderRadius: 8, border: '1px solid #bbf7d0' },
   editButton: {
     display: 'inline-block', padding: '10px 18px', fontSize: 14, fontWeight: 600 as const,
     background: '#0ea5e9', color: '#fff', borderRadius: 8,
     textDecoration: 'none' as const, marginTop: 4,
+  },
+  infoBox: {
+    padding: 12,
+    background: '#eff6ff',
+    borderRadius: 8,
+    border: '1px solid #bfdbfe',
+    color: '#1d4ed8',
+    marginBottom: 16,
+    fontSize: 13,
   },
   failureBox: { marginTop: 20, padding: 20, background: '#fef2f2', borderRadius: 8, border: '1px solid #fecaca' },
   errorBox: { padding: 16, background: '#fef2f2', borderRadius: 8, border: '1px solid #fecaca', color: '#dc2626', marginBottom: 16 },

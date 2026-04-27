@@ -60,7 +60,9 @@ function EditContent() {
       const data = await res.json();
       if (!res.ok || data.error) throw new Error(data.error || `Request failed: ${res.status}`);
 
-      router.push(`/status?repo=${encodeURIComponent(data.repoFullName)}&type=edit`);
+      router.push(
+        `/status?repo=${encodeURIComponent(data.repoFullName)}&type=edit&pageUrl=${encodeURIComponent(pageUrl.trim())}`
+      );
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Unknown error');
       setSubmitting(false);
