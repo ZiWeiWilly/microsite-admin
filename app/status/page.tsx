@@ -43,8 +43,18 @@ const STEP_LABELS: Record<string, string | null> = {
   'Deploy to Vercel': 'Deploying to Vercel',
 };
 
-function getFriendlyStepName(name: string): string | null {
-  if (name in STEP_LABELS) return STEP_LABELS[name];
+const EDIT_STEP_LABELS: Record<string, string | null> = {
+  'Set up job': null,
+  'Complete job': null,
+  'Run actions/checkout@v4': 'Cloning your repository',
+  'Download screenshot': 'Loading your reference screenshot',
+  'Run Claude Code': 'AI is editing your site ✨',
+  'Commit and push': 'Committing changes',
+};
+
+function getFriendlyStepName(name: string, type: 'generate' | 'edit'): string | null {
+  const labels = type === 'edit' ? EDIT_STEP_LABELS : STEP_LABELS;
+  if (name in labels) return labels[name];
   if (/^Set up Node/i.test(name)) return 'Setting up environment';
   return name;
 }
@@ -103,6 +113,7 @@ function StepIcon({ status, conclusion }: { status: string; conclusion: string |
 function StatusContent() {
   const searchParams = useSearchParams();
   const repo = searchParams.get('repo');
+  const type = searchParams.get('type') === 'edit' ? 'edit' : 'generate';
   const [data, setData] = useState<StatusData | null>(null);
   const [fetchError, setFetchError] = useState('');
   const elapsed = useElapsed(data?.createdAt);
@@ -130,7 +141,7 @@ function StatusContent() {
 
   const visibleSteps = data?.jobs?.flatMap(job =>
     (job.steps ?? []).flatMap(step => {
-      const label = getFriendlyStepName(step.name);
+      const label = getFriendlyStepName(step.name, type);
       return label ? [{ ...step, label }] : [];
     })
   ) ?? [];
@@ -169,10 +180,10 @@ function StatusContent() {
       `}</style>
 
       <div style={s.container}>
-        <a href="/" style={s.backLink}>&larr; Back to Generator</a>
+        <a href="/" style={s.backLink}>&larr; Dashboard</a>
         <div style={s.card}>
           <div style={{ marginBottom: 24 }}>
-            <h1 style={s.title}>Site Generation Progress</h1>
+            <h1 style={s.title}>{type === 'edit' ? 'AI Edit Progress' : 'Site Generation Progress'}</h1>
             <p style={s.subtitle}>{repo}</p>
           </div>
 
@@ -272,7 +283,9 @@ function StatusContent() {
               {/* Success */}
               {isSuccess && (
                 <div style={s.successBox}>
-                  <p style={{ fontWeight: 700, fontSize: 16, marginBottom: 8 }}>Your site is live!</p>
+                  <p style={{ fontWeight: 700, fontSize: 16, marginBottom: 8 }}>
+                    {type === 'edit' ? 'Edit applied — redeploying…' : 'Your site is live!'}
+                  </p>
                   {data.siteUrl && (
                     <p style={{ marginBottom: 8 }}>
                       <a href={data.siteUrl} target="_blank" rel="noopener" style={{ ...s.link, fontWeight: 600 }}>
@@ -280,9 +293,19 @@ function StatusContent() {
                       </a>
                     </p>
                   )}
-                  <p style={{ fontSize: 13, color: '#166534' }}>
-                    It may take a few minutes for the site to be fully accessible.
+                  <p style={{ fontSize: 13, color: '#166534', marginBottom: 12 }}>
+                    {type === 'edit'
+                      ? 'The AI has committed your changes. It may take a few minutes for the new version to go live.'
+                      : 'It may take a few minutes for the site to be fully accessible.'}
                   </p>
+                  {repo && (
+                    <a
+                      href={`/edit?repo=${encodeURIComponent(repo)}${data.siteUrl ? `&siteUrl=${encodeURIComponent(data.siteUrl)}` : ''}`}
+                      style={s.editButton}
+                    >
+                      ✨ Edit this site with AI
+                    </a>
+                  )}
                 </div>
               )}
 
@@ -340,6 +363,11 @@ const s = {
     borderRadius: 6,
   },
   successBox: { marginTop: 20, padding: 20, background: '#f0fdf4', borderRadius: 8, border: '1px solid #bbf7d0' },
+  editButton: {
+    display: 'inline-block', padding: '10px 18px', fontSize: 14, fontWeight: 600 as const,
+    background: '#0ea5e9', color: '#fff', borderRadius: 8,
+    textDecoration: 'none' as const, marginTop: 4,
+  },
   failureBox: { marginTop: 20, padding: 20, background: '#fef2f2', borderRadius: 8, border: '1px solid #fecaca' },
   errorBox: { padding: 16, background: '#fef2f2', borderRadius: 8, border: '1px solid #fecaca', color: '#dc2626', marginBottom: 16 },
 };

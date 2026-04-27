@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import _sodium from 'libsodium-wrappers';
+import { auth } from '@/app/auth';
+import { getSupabase } from '@/app/lib/supabase';
 
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN!;
 const TEMPLATE_OWNER = process.env.TEMPLATE_OWNER || 'ZiWeiWilly';
@@ -288,6 +290,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'GITHUB_TOKEN not configured' }, { status: 500 });
     }
 
+    const session = await auth();
+    const ownerEmail = session?.user?.email;
+    const ownerName = session?.user?.name;
+    if (!ownerEmail) {
+      return NextResponse.json({ error: 'Unauthenticated' }, { status: 401 });
+    }
+
     const formData = await request.formData();
     const config: SiteConfig = JSON.parse(formData.get('config') as string);
     const logoFile = formData.get('logo') as File | null;
@@ -432,6 +441,31 @@ export async function POST(request: Request) {
       }
     } catch {
       // Not critical
+    }
+
+    // Step 8: Persist site to Supabase (best-effort — don't fail generation)
+    try {
+      const supabase = getSupabase();
+      await supabase.from('sites').upsert({
+        repo_full_name: repoFullName,
+        repo_url: repoUrl,
+        attraction_name: config.attractionName,
+        klook_url: config.klookUrl,
+        domain: config.domain,
+        affiliate_url: config.affiliateUrl,
+        base_currency: config.baseCurrency ?? null,
+        languages: config.languages ?? null,
+        colors: config.colors ?? null,
+        head_scripts: config.headScripts ?? null,
+        vercel_url: vercelProjectUrl ?? null,
+        pages_url: cloudflareResult?.pagesUrl ?? null,
+        custom_domain: cloudflareResult?.customDomain ?? null,
+        status: 'generating',
+        created_by_email: ownerEmail,
+        created_by_name: ownerName ?? null,
+      }, { onConflict: 'repo_full_name' });
+    } catch (e: unknown) {
+      console.warn('[supabase] failed to persist site row:', e instanceof Error ? e.message : e);
     }
 
     return NextResponse.json({

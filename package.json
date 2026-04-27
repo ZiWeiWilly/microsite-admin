@@ -8,6 +8,7 @@
     "start": "next start"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.104.1",
     "libsodium-wrappers": "^0.8.2",
     "next": "^15.0.0",
     "next-auth": "^5.0.0-beta.30",

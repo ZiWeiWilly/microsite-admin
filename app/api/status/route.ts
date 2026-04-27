@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getSupabase } from '@/app/lib/supabase';
 
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN!;
 const VERCEL_TOKEN = process.env.VERCEL_TOKEN;
@@ -78,6 +79,20 @@ export async function GET(request: NextRequest) {
         }
       } catch {
         // Vercel project might not exist yet
+      }
+    }
+
+    // Sync to Supabase (best-effort) — only update on completion to avoid
+    // overwriting initial 'generating' / 'editing' states while a run is live.
+    if (latestRun.status === 'completed') {
+      try {
+        const supabase = getSupabase();
+        const status = latestRun.conclusion === 'success' ? 'ready' : 'failed';
+        const update: Record<string, string | null> = { status };
+        if (result.siteUrl) update.vercel_url = result.siteUrl;
+        await supabase.from('sites').update(update).eq('repo_full_name', repo);
+      } catch {
+        // Site may not be tracked in DB; ignore
       }
     }
 
