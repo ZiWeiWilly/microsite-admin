@@ -11,7 +11,12 @@ export async function GET() {
     if (error) throw error;
     return NextResponse.json({ sites: data ?? [] });
   } catch (e: unknown) {
-    const message = e instanceof Error ? e.message : 'Unknown error';
+    const message =
+      e instanceof Error
+        ? e.message
+        : typeof e === 'object' && e !== null && 'message' in e
+          ? String((e as { message: unknown }).message)
+          : 'Unknown error';
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
