@@ -1,14 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getSupabase } from '@/app/lib/supabase';
-
-function normalizeUrl(raw: string): string {
-  return raw
-    .trim()
-    .replace(/^https?:\/\//, '')
-    .replace(/^www\./, '')
-    .replace(/\/$/, '')
-    .toLowerCase();
-}
+import { lookupSiteByUrl } from '@/app/lib/site-lookup';
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -18,32 +9,12 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Missing url parameter' }, { status: 400 });
   }
 
-  const normalized = normalizeUrl(url);
-  if (!normalized) {
-    return NextResponse.json({ error: 'Invalid URL' }, { status: 400 });
-  }
-
   try {
-    const supabase = getSupabase();
-
-    // Match against domain (exact) or URL fields (partial, since they include protocol)
-    const { data, error } = await supabase
-      .from('sites')
-      .select('*')
-      .or(
-        `domain.eq.${normalized},` +
-        `vercel_url.ilike.%${normalized}%,` +
-        `pages_url.ilike.%${normalized}%,` +
-        `custom_domain.ilike.%${normalized}%`
-      )
-      .limit(1)
-      .single();
-
-    if (error || !data) {
+    const site = await lookupSiteByUrl(url);
+    if (!site) {
       return NextResponse.json({ error: 'Site not found' }, { status: 404 });
     }
-
-    return NextResponse.json({ site: data });
+    return NextResponse.json({ site });
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : 'Unknown error';
     return NextResponse.json({ error: message }, { status: 500 });

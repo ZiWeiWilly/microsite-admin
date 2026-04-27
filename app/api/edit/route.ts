@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSupabase, SCREENSHOT_BUCKET } from '@/app/lib/supabase';
+import { lookupSiteByUrl } from '@/app/lib/site-lookup';
 
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN!;
 
@@ -77,9 +78,26 @@ jobs:
 `;
 
 interface EditRequestBody {
-  repo: string;
+  repo?: string;
+  pageUrl: string;
   requirements: string;
-  screenshotUrl?: string;
+  areaDescription?: string;
+}
+
+function composeRequirements(input: { pageUrl: string; areaDescription?: string; change: string }): string {
+  const parts: string[] = [];
+  parts.push(`Target page URL: ${input.pageUrl}`);
+  parts.push('');
+  parts.push(
+    `The user wants to modify the page served at the URL above. The repository is the Next.js source (not a built site) — locate the route/file in this repo that corresponds to this URL by examining the app/ directory and any i18n routing, then make the change there.`
+  );
+  if (input.areaDescription?.trim()) {
+    parts.push('');
+    parts.push(`Area on the page to change: ${input.areaDescription.trim()}`);
+  }
+  parts.push('');
+  parts.push(`Change requested: ${input.change.trim()}`);
+  return parts.join('\n');
 }
 
 async function githubApi(endpoint: string, options: RequestInit = {}) {
@@ -137,14 +155,32 @@ export async function POST(request: Request) {
 
     const formData = await request.formData();
     const body: EditRequestBody = {
-      repo: formData.get('repo') as string,
-      requirements: formData.get('requirements') as string,
+      repo: (formData.get('repo') as string) || undefined,
+      pageUrl: (formData.get('pageUrl') as string) || '',
+      requirements: (formData.get('requirements') as string) || '',
+      areaDescription: (formData.get('areaDescription') as string) || undefined,
     };
     const screenshotFile = formData.get('screenshot') as File | null;
 
-    if (!body.repo || !body.requirements?.trim()) {
-      return NextResponse.json({ error: 'Missing required fields: repo and requirements' }, { status: 400 });
+    if (!body.pageUrl?.trim() || !body.requirements?.trim()) {
+      return NextResponse.json({ error: 'Missing required fields: pageUrl and requirements' }, { status: 400 });
     }
+
+    // Resolve repo from pageUrl if not provided
+    let repo = body.repo;
+    if (!repo) {
+      const site = await lookupSiteByUrl(body.pageUrl);
+      if (!site) {
+        return NextResponse.json({ error: `No site found matching URL: ${body.pageUrl}` }, { status: 404 });
+      }
+      repo = site.repo_full_name;
+    }
+
+    const composedRequirements = composeRequirements({
+      pageUrl: body.pageUrl.trim(),
+      areaDescription: body.areaDescription,
+      change: body.requirements,
+    });
 
     if (screenshotFile) {
       if (!screenshotFile.type.startsWith('image/')) {
@@ -160,7 +196,7 @@ export async function POST(request: Request) {
       try {
         const supabase = getSupabase();
         const ext = screenshotFile.name.split('.').pop() || 'png';
-        const objectPath = `${body.repo.replace('/', '-')}-${Date.now()}.${ext}`;
+        const objectPath = `${repo.replace('/', '-')}-${Date.now()}.${ext}`;
         const { error: uploadError } = await supabase.storage
           .from(SCREENSHOT_BUCKET)
           .upload(objectPath, screenshotFile, {
@@ -185,32 +221,32 @@ export async function POST(request: Request) {
       await supabase
         .from('sites')
         .update({ status: 'editing' })
-        .eq('repo_full_name', body.repo);
+        .eq('repo_full_name', repo);
     } catch {
       // Site may pre-date DB tracking; continue
     }
 
-    await ensureWorkflowFile(body.repo);
+    await ensureWorkflowFile(repo);
 
-    const defaultBranch = await getDefaultBranch(body.repo);
+    const defaultBranch = await getDefaultBranch(repo);
 
     await new Promise(resolve => setTimeout(resolve, 1500));
 
-    await githubApi(`/repos/${body.repo}/actions/workflows/ai-edit.yml/dispatches`, {
+    await githubApi(`/repos/${repo}/actions/workflows/ai-edit.yml/dispatches`, {
       method: 'POST',
       body: JSON.stringify({
         ref: defaultBranch,
         inputs: {
-          requirements: body.requirements,
+          requirements: composedRequirements,
           screenshot_url: screenshotUrl ?? '',
         },
       }),
     });
 
     await new Promise(resolve => setTimeout(resolve, 2000));
-    let runUrl = `https://github.com/${body.repo}/actions`;
+    let runUrl = `https://github.com/${repo}/actions`;
     try {
-      const runs = await githubApi(`/repos/${body.repo}/actions/runs?per_page=1`);
+      const runs = await githubApi(`/repos/${repo}/actions/runs?per_page=1`);
       if (runs.workflow_runs?.length > 0) {
         runUrl = runs.workflow_runs[0].html_url;
       }
@@ -219,7 +255,7 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json({
-      repoFullName: body.repo,
+      repoFullName: repo,
       runUrl,
       screenshotUrl,
       message: 'AI edit workflow dispatched',
