@@ -68,7 +68,7 @@ jobs:
           curl -L -o .ai-edit/screenshot.png "\${{ inputs.screenshot_url }}"
 
       - name: Install Claude Code CLI
-        run: curl -fsSL https://claude.ai/install.sh | bash -s 1.0.88
+        run: curl -fsSL https://claude.ai/install.sh | bash -s stable
 
       - name: Run Claude Code via OpenRouter
         env:
@@ -101,7 +101,6 @@ jobs:
           cat /tmp/ai-edit-prompt.md | "$HOME/.local/bin/claude" -p \
             --model sonnet \
             --max-turns 30 \
-            --tools "Read,Write,Edit,Glob,Grep,Bash" \
             --permission-mode bypassPermissions \
             --output-format text
 
