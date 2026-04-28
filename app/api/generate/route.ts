@@ -135,27 +135,109 @@ async function encryptSecret(publicKey: string, secretValue: string): Promise<st
   return Buffer.from(encrypted).toString('base64');
 }
 
+async function vercelApi<T = unknown>(
+  path: string,
+  options: RequestInit & { query?: Record<string, string> } = {}
+): Promise<{ ok: boolean; status: number; data: T & Record<string, unknown> }> {
+  const url = new URL(`https://api.vercel.com${path}`);
+  if (VERCEL_ORG_ID) url.searchParams.set('teamId', VERCEL_ORG_ID);
+  for (const [k, v] of Object.entries(options.query ?? {})) url.searchParams.set(k, v);
+
+  const res = await fetch(url.toString(), {
+    ...options,
+    headers: {
+      Authorization: `Bearer ${VERCEL_TOKEN}`,
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  });
+  const text = await res.text();
+  let data: Record<string, unknown> = {};
+  if (text.trim()) {
+    try { data = JSON.parse(text) as Record<string, unknown>; } catch { data = { raw: text }; }
+  }
+  return { ok: res.ok, status: res.status, data: data as T & Record<string, unknown> };
+}
+
+interface VercelLink {
+  type?: string;
+  repo?: string;
+  repoId?: number;
+  org?: string;
+  gitCredentialId?: string;
+  productionBranch?: string;
+}
+
+interface VercelProject {
+  id: string;
+  name: string;
+  link?: VercelLink | null;
+}
+
+/**
+ * Vercel's `POST /v10/projects` accepts `gitRepository` but the link can fail
+ * silently when the Vercel-GitHub App hasn't indexed a freshly-created private
+ * repo yet. We retry the link endpoint until Vercel reports a real `link`
+ * payload, so the project actually auto-deploys on subsequent pushes.
+ */
+async function linkVercelProjectToGithub(
+  projectId: string,
+  githubOwner: string,
+  githubRepo: string,
+  githubRepoId: number | undefined,
+  maxAttempts = 6,
+  intervalMs = 5000
+): Promise<VercelLink> {
+  let lastError: string | undefined;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const body: Record<string, unknown> = {
+      type: 'github',
+      repo: `${githubOwner}/${githubRepo}`,
+    };
+    if (typeof githubRepoId === 'number') body.repoId = githubRepoId;
+
+    const { ok, status, data } = await vercelApi<VercelProject>(
+      `/v10/projects/${encodeURIComponent(projectId)}/link`,
+      { method: 'POST', body: JSON.stringify(body) }
+    );
+
+    if (ok && data.link && (data.link.repo || data.link.repoId)) {
+      return data.link;
+    }
+
+    const errorMsg = ok
+      ? 'Vercel returned project without link payload'
+      : `Vercel link API error ${status}: ${(data as { error?: { message?: string } }).error?.message || JSON.stringify(data)}`;
+    lastError = errorMsg;
+    console.warn(`[vercel:link] attempt ${attempt}/${maxAttempts} failed: ${errorMsg}`);
+
+    if (attempt < maxAttempts) await sleep(intervalMs);
+  }
+  throw new Error(
+    lastError
+      ? `Failed to link GitHub repo to Vercel project after ${maxAttempts} attempts: ${lastError}`
+      : 'Failed to link GitHub repo to Vercel project'
+  );
+}
+
 async function createVercelProject(
   projectName: string,
   githubOwner: string,
   githubRepo: string,
+  githubRepoId: number | undefined,
   productionBranch: string
-): Promise<{ id: string; url: string }> {
-  const url = new URL('https://api.vercel.com/v10/projects');
-  if (VERCEL_ORG_ID) url.searchParams.set('teamId', VERCEL_ORG_ID);
+): Promise<{ id: string; url: string; link: VercelLink }> {
+  const gitRepository: Record<string, unknown> = {
+    type: 'github',
+    repo: `${githubOwner}/${githubRepo}`,
+  };
+  if (typeof githubRepoId === 'number') gitRepository.repoId = githubRepoId;
 
-  const res = await fetch(url.toString(), {
+  const { ok, status, data } = await vercelApi<VercelProject>('/v10/projects', {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${VERCEL_TOKEN}`,
-      'Content-Type': 'application/json',
-    },
     body: JSON.stringify({
       name: projectName,
-      gitRepository: {
-        type: 'github',
-        repo: `${githubOwner}/${githubRepo}`,
-      },
+      gitRepository,
       productionBranch,
       framework: null,
       buildCommand: 'npm run build',
@@ -164,11 +246,25 @@ async function createVercelProject(
     }),
   });
 
-  const data = await res.json();
-  if (!res.ok) {
-    throw new Error(`Vercel API error: ${data.error?.message || JSON.stringify(data)}`);
+  if (!ok) {
+    const message = (data as { error?: { message?: string } }).error?.message || JSON.stringify(data);
+    throw new Error(`Vercel API error ${status}: ${message}`);
   }
-  return { id: data.id, url: `https://${data.name}.vercel.app` };
+
+  // The create endpoint returns success even when the repo couldn't be linked
+  // (e.g. Vercel-GitHub App hasn't indexed the new repo yet). Verify the link
+  // landed; if not, retry via the explicit /link endpoint.
+  let link: VercelLink | null | undefined = data.link;
+  if (!link || (!link.repo && !link.repoId)) {
+    console.warn(`[vercel] project created but git not linked yet, retrying via /link`);
+    link = await linkVercelProjectToGithub(data.id, githubOwner, githubRepo, githubRepoId);
+  }
+
+  return {
+    id: data.id,
+    url: `https://${data.name}.vercel.app`,
+    link,
+  };
 }
 
 /** Set required runtime secrets on the newly generated repo */
@@ -341,6 +437,7 @@ export async function POST(request: Request) {
 
     const repoFullName = typeof repoData.full_name === 'string' ? repoData.full_name : null;
     const repoUrl = typeof repoData.html_url === 'string' ? repoData.html_url : null;
+    const repoId = typeof repoData.id === 'number' ? repoData.id : undefined;
     if (!repoFullName || !repoUrl) {
       throw new Error('GitHub API returned invalid repository payload');
     }
@@ -364,10 +461,12 @@ export async function POST(request: Request) {
         : TARGET_OWNER;
     if (domainEnvironment === 'test' && VERCEL_TOKEN && repoOwner) {
       try {
-        const vercel = await createVercelProject(repoName, repoOwner, repoName, defaultBranch);
+        const vercel = await createVercelProject(repoName, repoOwner, repoName, repoId, defaultBranch);
         vercelProjectId = vercel.id;
         vercelProjectUrl = vercel.url;
-        console.log(`[vercel] ✓ project created: ${vercelProjectUrl}`);
+        console.log(
+          `[vercel] ✓ project created and linked to ${vercel.link.repo ?? `${repoOwner}/${repoName}`}: ${vercelProjectUrl}`
+        );
       } catch (e: unknown) {
         vercelWarning = e instanceof Error ? e.message : String(e);
         console.warn(`[vercel] project creation failed: ${vercelWarning}`);
