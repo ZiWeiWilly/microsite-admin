@@ -70,7 +70,8 @@ jobs:
       - name: Run Claude Code
         uses: anthropics/claude-code-base-action@beta
         env:
-          ANTHROPIC_API_KEY: \${{ secrets.OPENROUTER_API_KEY }}
+          ANTHROPIC_API_KEY: ""
+          ANTHROPIC_AUTH_TOKEN: \${{ secrets.OPENROUTER_API_KEY }}
           ANTHROPIC_BASE_URL: https://openrouter.ai/api
         with:
           model: anthropic/claude-sonnet-4-5
