@@ -35,6 +35,14 @@ on:
         description: 'Public URL of reference screenshot'
         required: false
         type: string
+      commit_author_name:
+        description: 'Git author name for AI commits (must match a GitHub user with Vercel access)'
+        required: true
+        type: string
+      commit_author_email:
+        description: 'Git author email for AI commits (GitHub noreply form, so Vercel attributes the commit to the repo owner)'
+        required: true
+        type: string
 
 jobs:
   ai-edit:
@@ -107,9 +115,11 @@ jobs:
       - name: Commit and push
         env:
           BRANCH_NAME: \${{ inputs.branch_name }}
+          COMMIT_AUTHOR_NAME: \${{ inputs.commit_author_name }}
+          COMMIT_AUTHOR_EMAIL: \${{ inputs.commit_author_email }}
         run: |
-          git config user.name "AI Edit Bot"
-          git config user.email "ai-edit@klook.com"
+          git config user.name "$COMMIT_AUTHOR_NAME"
+          git config user.email "$COMMIT_AUTHOR_EMAIL"
           rm -rf .ai-edit
           if [ -n "$(git status --porcelain)" ]; then
             git add -A
@@ -220,6 +230,38 @@ async function getDefaultBranch(repoFullName: string): Promise<string> {
   return data.default_branch || 'main';
 }
 
+interface RepoOwnerIdentity {
+  login: string;
+  id: number;
+  name?: string;
+}
+
+// Vercel's GitHub integration only deploys commits whose author is recognized
+// as a member of the connected Vercel account. Personal Vercel accounts only
+// recognize the account owner. Using the repo owner's GitHub noreply email
+// (`<id>+<login>@users.noreply.github.com`) makes Vercel attribute AI commits
+// to the repo owner, so preview/production deployments are allowed.
+async function getRepoOwnerIdentity(repoFullName: string): Promise<RepoOwnerIdentity> {
+  const repo = await githubApi(`/repos/${repoFullName}`);
+  const ownerLogin = repo?.owner?.login as string | undefined;
+  if (!ownerLogin) {
+    throw new Error(`Could not resolve owner of ${repoFullName}`);
+  }
+  const user = await githubApi(`/users/${ownerLogin}`);
+  return {
+    login: user.login,
+    id: user.id,
+    name: user.name || user.login,
+  };
+}
+
+function buildCommitAuthor(owner: RepoOwnerIdentity): { name: string; email: string } {
+  return {
+    name: owner.name || owner.login,
+    email: `${owner.id}+${owner.login}@users.noreply.github.com`,
+  };
+}
+
 async function findOpenAiEditPr(repoFullName: string): Promise<PullRequestSummary | null> {
   const pulls = await githubApi(`/repos/${repoFullName}/pulls?state=open&per_page=30`);
   const list = Array.isArray(pulls) ? pulls : [];
@@ -316,6 +358,8 @@ export async function POST(request: Request) {
     await ensureWorkflowFile(repo);
 
     const defaultBranch = await getDefaultBranch(repo);
+    const ownerIdentity = await getRepoOwnerIdentity(repo);
+    const commitAuthor = buildCommitAuthor(ownerIdentity);
     const existingPr = await findOpenAiEditPr(repo);
     const branchName = existingPr?.head?.ref || `${AI_EDIT_BRANCH_PREFIX}${Date.now().toString(36)}`;
     const isIteration = Boolean(existingPr);
@@ -340,6 +384,8 @@ export async function POST(request: Request) {
           previous_summary: previousSummary,
           requirements: composedRequirements,
           screenshot_url: screenshotUrl ?? '',
+          commit_author_name: commitAuthor.name,
+          commit_author_email: commitAuthor.email,
         },
       }),
     });
