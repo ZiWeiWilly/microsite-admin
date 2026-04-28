@@ -11,6 +11,7 @@ const CURRENCIES = [
 ];
 
 type Step = 'basic' | 'settings' | 'done';
+type DomainEnvironment = 'production' | 'test';
 
 export default function NewSitePage() {
   const router = useRouter();
@@ -21,6 +22,7 @@ export default function NewSitePage() {
   const [attractionName, setAttractionName] = useState('');
   const [klookUrl, setKlookUrl] = useState('');
   const [domain, setDomain] = useState('');
+  const [domainEnvironment, setDomainEnvironment] = useState<DomainEnvironment>('test');
   const [affiliateUrl, setAffiliateUrl] = useState('');
   const [headScripts, setHeadScripts] = useState('');
 
@@ -139,7 +141,17 @@ export default function NewSitePage() {
     setResult(null);
     try {
       const formData = new FormData();
-      formData.append('config', JSON.stringify({ attractionName, klookUrl, domain, affiliateUrl, baseCurrency, colors, languages, ...(headScripts.trim() && { headScripts: headScripts.trim() }) }));
+      formData.append('config', JSON.stringify({
+        attractionName,
+        klookUrl,
+        domain,
+        domainEnvironment,
+        affiliateUrl,
+        baseCurrency,
+        colors,
+        languages,
+        ...(headScripts.trim() && { headScripts: headScripts.trim() }),
+      }));
 
       const finalLogo = logoFile ?? (generatedLogos ? base64ToFile(generatedLogos.logo, 'logo.png') : null);
       const finalLogoLight = logoLightFile ?? (generatedLogos ? base64ToFile(generatedLogos.logoLight, 'logo-light.png') : null);
@@ -216,6 +228,15 @@ export default function NewSitePage() {
     fileInput: { fontSize: 13, color: '#555' },
     fileHint: { fontSize: 11, color: '#999', marginTop: 4 },
     preview: { height: 36, maxWidth: 120, objectFit: 'contain' as const, borderRadius: 4, border: '1px solid #eee' },
+    radioGroup: { display: 'flex', flexDirection: 'column' as const, gap: 8, marginTop: 10 },
+    radioOption: (disabled: boolean) => ({
+      display: 'flex',
+      alignItems: 'center' as const,
+      gap: 8,
+      fontSize: 13,
+      color: disabled ? '#9ca3af' : '#374151',
+      cursor: disabled ? 'not-allowed' : 'pointer',
+    }),
   };
 
   return (
@@ -279,6 +300,33 @@ export default function NewSitePage() {
               onChange={e => setDomain(e.target.value)}
               disabled={step !== 'basic'}
             />
+            <div style={s.radioGroup}>
+              <label style={s.radioOption(step !== 'basic')}>
+                <input
+                  type="radio"
+                  name="domainEnvironment"
+                  value="test"
+                  checked={domainEnvironment === 'test'}
+                  onChange={() => setDomainEnvironment('test')}
+                  disabled={step !== 'basic'}
+                />
+                Test (Vercel)
+              </label>
+              <label
+                style={s.radioOption(true)}
+                title="Cloudflare not available"
+              >
+                <input
+                  type="radio"
+                  name="domainEnvironment"
+                  value="production"
+                  checked={domainEnvironment === 'production'}
+                  onChange={() => setDomainEnvironment('production')}
+                  disabled
+                />
+                Production (Cloudflare)
+              </label>
+            </div>
             {dupStatus === 'checking' && <div style={{ fontSize: 12, color: '#888', marginTop: 4 }}>Checking for existing project...</div>}
             {dupStatus === 'ok' && <div style={{ fontSize: 12, color: '#16a34a', marginTop: 4 }}>✓ Name is available</div>}
             {dupStatus === 'duplicate' && dupResult && (

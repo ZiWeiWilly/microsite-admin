@@ -16,6 +16,7 @@ interface SiteConfig {
   attractionName: string;
   klookUrl: string;
   domain: string;
+  domainEnvironment?: 'production' | 'test';
   affiliateUrl: string;
   baseCurrency?: string;
   colors?: { primary: string; secondary: string; accent: string };
@@ -299,6 +300,7 @@ export async function POST(request: Request) {
 
     const formData = await request.formData();
     const config: SiteConfig = JSON.parse(formData.get('config') as string);
+    const domainEnvironment = config.domainEnvironment === 'production' ? 'production' : 'test';
     const logoFile = formData.get('logo') as File | null;
     const logoLightFile = formData.get('logoLight') as File | null;
     const logoIconFile = formData.get('logoIcon') as File | null;
@@ -360,7 +362,7 @@ export async function POST(request: Request) {
       typeof repoData.owner.login === 'string'
         ? repoData.owner.login
         : TARGET_OWNER;
-    if (VERCEL_TOKEN && repoOwner) {
+    if (domainEnvironment === 'test' && VERCEL_TOKEN && repoOwner) {
       try {
         const vercel = await createVercelProject(repoName, repoOwner, repoName, defaultBranch);
         vercelProjectId = vercel.id;
@@ -372,9 +374,11 @@ export async function POST(request: Request) {
       }
     }
     const vercelSecrets: Record<string, string> = {};
-    if (VERCEL_TOKEN) vercelSecrets['VERCEL_TOKEN'] = VERCEL_TOKEN;
-    if (VERCEL_ORG_ID) vercelSecrets['VERCEL_ORG_ID'] = VERCEL_ORG_ID;
-    if (vercelProjectId) vercelSecrets['VERCEL_PROJECT_ID'] = vercelProjectId;
+    if (domainEnvironment === 'test') {
+      if (VERCEL_TOKEN) vercelSecrets['VERCEL_TOKEN'] = VERCEL_TOKEN;
+      if (VERCEL_ORG_ID) vercelSecrets['VERCEL_ORG_ID'] = VERCEL_ORG_ID;
+      if (vercelProjectId) vercelSecrets['VERCEL_PROJECT_ID'] = vercelProjectId;
+    }
     await setRepoSecrets(repoFullName, vercelSecrets);
 
     // Step 4: Commit logo images to the repo
@@ -394,7 +398,7 @@ export async function POST(request: Request) {
     // Step 5: Set up Cloudflare Pages + custom domain (if configured)
     let cloudflareResult: { projectName: string; pagesUrl: string; customDomain: string } | undefined;
     let cloudflareWarning: string | undefined;
-    if (CLOUDFLARE_ACCOUNT_ID && CLOUDFLARE_API_TOKEN && config.domain) {
+    if (domainEnvironment === 'production' && CLOUDFLARE_ACCOUNT_ID && CLOUDFLARE_API_TOKEN && config.domain) {
       try {
         cloudflareResult = await setupCloudflarePages(TARGET_OWNER, repoName, config.domain);
         console.log(`[cloudflare] ✓ Pages project created: ${cloudflareResult.pagesUrl}`);
