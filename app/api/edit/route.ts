@@ -67,35 +67,43 @@ jobs:
           mkdir -p .ai-edit
           curl -L -o .ai-edit/screenshot.png "\${{ inputs.screenshot_url }}"
 
-      - name: Run Claude Code
-        uses: anthropics/claude-code-base-action@beta
+      - name: Install Claude Code CLI
+        run: curl -fsSL https://claude.ai/install.sh | bash -s 1.0.88
+
+      - name: Run Claude Code via OpenRouter
         env:
           ANTHROPIC_API_KEY: ""
           ANTHROPIC_AUTH_TOKEN: \${{ secrets.OPENROUTER_API_KEY }}
           ANTHROPIC_BASE_URL: https://openrouter.ai/api
-        with:
-          model: anthropic/claude-sonnet-4-5
-          allowed_tools: Read,Write,Edit,Glob,Grep,Bash
-          max_turns: '30'
-          prompt: |
-            You are editing a Klook microsite repository to fulfill the user's request.
+          ANTHROPIC_DEFAULT_SONNET_MODEL: anthropic/claude-sonnet-4-5
+        run: |
+          cat > /tmp/ai-edit-prompt.md <<'PROMPT_EOF'
+          You are editing a Klook microsite repository to fulfill the user's request.
 
-            \${{ inputs.is_iteration == 'true' && 'This is an iteration on an existing AI edit branch. Keep previously approved changes unless the new requirements explicitly override them.' || 'This is the first iteration for this AI edit request.' }}
+          \${{ inputs.is_iteration == 'true' && 'This is an iteration on an existing AI edit branch. Keep previously approved changes unless the new requirements explicitly override them.' || 'This is the first iteration for this AI edit request.' }}
 
-            \${{ inputs.previous_summary != '' && format('Previous change summary:\\n{0}\\n', inputs.previous_summary) || '' }}
+          \${{ inputs.previous_summary != '' && format('Previous change summary:\\n{0}\\n', inputs.previous_summary) || '' }}
 
-            User requirements (latest):
-            \${{ inputs.requirements }}
+          User requirements (latest):
+          \${{ inputs.requirements }}
 
-            \${{ inputs.screenshot_url && 'A reference screenshot is at .ai-edit/screenshot.png — read it with the Read tool to understand the visual context.' || '' }}
+          \${{ inputs.screenshot_url && 'A reference screenshot is at .ai-edit/screenshot.png — read it with the Read tool to understand the visual context.' || '' }}
 
-            Rules:
-            - Modify only files under app/, components/, src/, styles/, public/, content/, or top-level config files like tailwind.config.* and next.config.*
-            - Do NOT modify .github/, package.json dependencies, or any workflow files
-            - Do NOT modify or delete the .ai-edit/ directory
-            - Keep changes minimal and focused on the user's request
-            - Preserve existing i18n keys; add new ones if needed
-            - When unsure about a file's purpose, use Glob/Grep to explore before editing
+          Rules:
+          - Modify only files under app/, components/, src/, styles/, public/, content/, or top-level config files like tailwind.config.* and next.config.*
+          - Do NOT modify .github/, package.json dependencies, or any workflow files
+          - Do NOT modify or delete the .ai-edit/ directory
+          - Keep changes minimal and focused on the user's request
+          - Preserve existing i18n keys; add new ones if needed
+          - When unsure about a file's purpose, use Glob/Grep to explore before editing
+          PROMPT_EOF
+
+          cat /tmp/ai-edit-prompt.md | "$HOME/.local/bin/claude" -p \
+            --model sonnet \
+            --max-turns 30 \
+            --tools "Read,Write,Edit,Glob,Grep,Bash" \
+            --permission-mode bypassPermissions \
+            --output-format text
 
       - name: Commit and push
         env:
