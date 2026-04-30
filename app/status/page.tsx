@@ -19,7 +19,6 @@ interface Job {
 interface StatusData {
   status: string;
   conclusion: string | null;
-  runUrl: string;
   createdAt: string;
   updatedAt: string;
   workflowName: string;
@@ -347,14 +346,9 @@ function StatusContent() {
                 {' '}<code>workflow</code> / <code>Actions: read & write</code> permission.
                 You can trigger it manually from the Actions tab.
               </p>
-              <a
-                href={`https://github.com/${repo}/actions`}
-                target="_blank"
-                rel="noopener"
-                style={{ ...s.link, fontSize: 13, color: '#dc2626' }}
-              >
-                Open GitHub Actions →
-              </a>
+              <p style={{ fontSize: 13, color: '#7f1d1d' }}>
+                Please contact your technical team to trigger the workflow.
+              </p>
             </div>
           )}
 
@@ -370,9 +364,6 @@ function StatusContent() {
                     {isCompleted ? `Finished in ${elapsed}` : `Running for ${elapsed}`}
                   </span>
                 )}
-                <a href={data.runUrl} target="_blank" rel="noopener" style={{ ...s.link, marginLeft: 'auto', fontSize: 13 }}>
-                  View on GitHub &rarr;
-                </a>
               </div>
 
               {/* Progress bar */}
@@ -568,9 +559,9 @@ function StatusContent() {
                   <p style={{ fontSize: 13, color: '#7f1d1d', marginBottom: 10 }}>
                     Something went wrong during the process. Please check the details on GitHub or contact your technical team.
                   </p>
-                  <a href={data.runUrl} target="_blank" rel="noopener" style={{ ...s.link, fontSize: 13, color: '#dc2626' }}>
-                    View error details on GitHub &rarr;
-                  </a>
+                  <p style={{ fontSize: 13, color: '#7f1d1d', margin: 0 }}>
+                    Please contact your technical team for details.
+                  </p>
                 </div>
               )}
 

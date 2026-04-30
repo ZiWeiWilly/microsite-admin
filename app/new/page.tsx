@@ -71,7 +71,7 @@ export default function NewSitePage() {
   const [generateLoading, setGenerateLoading] = useState(false);
 
   // Result
-  const [result, setResult] = useState<{ repoUrl?: string; statusUrl?: string; vercelProjectUrl?: string; actionsUrl?: string; error?: string } | null>(null);
+  const [result, setResult] = useState<{ statusUrl?: string; vercelProjectUrl?: string; error?: string } | null>(null);
 
   async function handleAutoSettings(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -164,7 +164,7 @@ export default function NewSitePage() {
       const res = await fetch('/api/generate', { method: 'POST', body: formData });
       const data = await res.json();
       if (!res.ok) {
-        setResult({ error: data.error || 'Generation failed', repoUrl: data.repoUrl, actionsUrl: data.actionsUrl });
+        setResult({ error: data.error || 'Generation failed' });
       } else {
         router.push(`/status?repo=${data.repoFullName}`);
       }
@@ -570,24 +570,15 @@ export default function NewSitePage() {
             {result?.error && (
               <div style={s.errorBox}>
                 <div>{result.error}</div>
-                {(result.repoUrl || result.actionsUrl) && (
-                  <div style={{ marginTop: 10, fontSize: 13, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                    {result.repoUrl && <a href={result.repoUrl} target="_blank" rel="noopener">Open repo →</a>}
-                    {result.actionsUrl && <a href={result.actionsUrl} target="_blank" rel="noopener">Run workflow manually →</a>}
-                  </div>
-                )}
               </div>
             )}
           </>
         )}
 
         {/* ── Done ── */}
-        {step === 'done' && result?.repoUrl && (
+        {step === 'done' && result && (
           <div style={s.success}>
             <p style={{ margin: '0 0 8px', fontWeight: 600 }}>Site generation started!</p>
-            <p style={{ margin: '0 0 4px', fontSize: 14 }}>
-              Repository: <a href={result.repoUrl} target="_blank" rel="noopener">{result.repoUrl}</a>
-            </p>
             {result.vercelProjectUrl && (
               <p style={{ margin: '0 0 4px', fontSize: 14 }}>
                 Vercel: <a href={result.vercelProjectUrl} target="_blank" rel="noopener">{result.vercelProjectUrl}</a>
