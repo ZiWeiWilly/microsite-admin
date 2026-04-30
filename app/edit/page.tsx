@@ -2,6 +2,7 @@
 
 import { useState, FormEvent, ChangeEvent, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
+import { uploadScreenshot } from '@/app/lib/upload-screenshot';
 
 function EditContent() {
   const searchParams = useSearchParams();
@@ -23,8 +24,8 @@ function EditContent() {
 
   function handleScreenshotChange(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0] ?? null;
-    if (file && file.size > 5 * 1024 * 1024) {
-      setError('Screenshot exceeds 5 MB. Please use a smaller file.');
+    if (file && file.size > 10 * 1024 * 1024) {
+      setError('Screenshot exceeds 10 MB. Please use a smaller file.');
       e.target.value = '';
       return;
     }
@@ -49,14 +50,19 @@ function EditContent() {
 
     setSubmitting(true);
     try {
-      const formData = new FormData();
-      formData.append('pageUrl', pageUrl.trim());
-      formData.append('requirements', requirements);
-      if (areaDescription.trim()) formData.append('areaDescription', areaDescription.trim());
-      if (prefilledRepo) formData.append('repo', prefilledRepo);
-      if (screenshot) formData.append('screenshot', screenshot);
+      const screenshotUrl = screenshot ? await uploadScreenshot(screenshot) : undefined;
 
-      const res = await fetch('/api/edit', { method: 'POST', body: formData });
+      const res = await fetch('/api/edit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pageUrl: pageUrl.trim(),
+          requirements,
+          areaDescription: areaDescription.trim() || undefined,
+          repo: prefilledRepo || undefined,
+          screenshotUrl,
+        }),
+      });
       const data = await res.json();
       if (!res.ok || data.error) throw new Error(data.error || `Request failed: ${res.status}`);
 

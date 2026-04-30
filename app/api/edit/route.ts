@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getSupabase, SCREENSHOT_BUCKET } from '@/app/lib/supabase';
+import { getSupabase } from '@/app/lib/supabase';
 import { lookupSiteByUrl } from '@/app/lib/site-lookup';
 
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN!;
@@ -158,6 +158,7 @@ interface EditRequestBody {
   requirements: string;
   areaDescription?: string;
   previousSummary?: string;
+  screenshotUrl?: string;
 }
 
 function composeRequirements(input: { pageUrl: string; areaDescription?: string; change: string }): string {
@@ -281,18 +282,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'GITHUB_TOKEN not configured' }, { status: 500 });
     }
 
-    const formData = await request.formData();
-    const body: EditRequestBody = {
-      repo: (formData.get('repo') as string) || undefined,
-      pageUrl: (formData.get('pageUrl') as string) || '',
-      requirements: (formData.get('requirements') as string) || '',
-      areaDescription: (formData.get('areaDescription') as string) || undefined,
-      previousSummary: (formData.get('previousSummary') as string) || undefined,
-    };
-    const screenshotFile = formData.get('screenshot') as File | null;
+    const body = (await request.json().catch(() => ({}))) as EditRequestBody;
 
     if (!body.pageUrl?.trim() || !body.requirements?.trim()) {
       return NextResponse.json({ error: 'Missing required fields: pageUrl and requirements' }, { status: 400 });
+    }
+
+    const screenshotUrl = body.screenshotUrl?.trim() || undefined;
+    if (screenshotUrl) {
+      const expectedPrefix = process.env.SUPABASE_URL;
+      if (!expectedPrefix || !screenshotUrl.startsWith(expectedPrefix)) {
+        return NextResponse.json({ error: 'Invalid screenshotUrl: must be a Supabase storage URL' }, { status: 400 });
+      }
     }
 
     // Resolve repo from pageUrl if not provided
@@ -310,39 +311,6 @@ export async function POST(request: Request) {
       areaDescription: body.areaDescription,
       change: body.requirements,
     });
-
-    if (screenshotFile) {
-      if (!screenshotFile.type.startsWith('image/')) {
-        return NextResponse.json({ error: 'Screenshot must be an image file' }, { status: 400 });
-      }
-      if (screenshotFile.size > 5 * 1024 * 1024) {
-        return NextResponse.json({ error: 'Screenshot too large (max 5MB)' }, { status: 400 });
-      }
-    }
-
-    let screenshotUrl: string | undefined;
-    if (screenshotFile) {
-      try {
-        const supabase = getSupabase();
-        const ext = screenshotFile.name.split('.').pop() || 'png';
-        const objectPath = `${repo.replace('/', '-')}-${Date.now()}.${ext}`;
-        const { error: uploadError } = await supabase.storage
-          .from(SCREENSHOT_BUCKET)
-          .upload(objectPath, screenshotFile, {
-            contentType: screenshotFile.type,
-            cacheControl: '3600',
-            upsert: false,
-          });
-        if (uploadError) throw uploadError;
-        const { data } = supabase.storage.from(SCREENSHOT_BUCKET).getPublicUrl(objectPath);
-        screenshotUrl = data.publicUrl;
-      } catch (e: unknown) {
-        const msg = e instanceof Error ? e.message : String(e);
-        return NextResponse.json({
-          error: `Screenshot upload failed (Supabase): ${msg}. Verify SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY and that the "${SCREENSHOT_BUCKET}" bucket exists.`
-        }, { status: 500 });
-      }
-    }
 
     // Mark site as editing in DB (best-effort; ignore if not in DB)
     try {

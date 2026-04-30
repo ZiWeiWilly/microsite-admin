@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
+import { uploadScreenshot } from '@/app/lib/upload-screenshot';
 
 interface JobStep {
   name: string;
@@ -240,8 +241,8 @@ function StatusContent() {
       setRefineScreenshot(null);
       return;
     }
-    if (file.size > 5 * 1024 * 1024) {
-      setActionError('Screenshot exceeds 5 MB. Please use a smaller file.');
+    if (file.size > 10 * 1024 * 1024) {
+      setActionError('Screenshot exceeds 10 MB. Please use a smaller file.');
       return;
     }
     setActionError('');
@@ -261,16 +262,19 @@ function StatusContent() {
     setActionError('');
     setActionMessage('');
     try {
-      const formData = new FormData();
-      formData.append('repo', repo || '');
-      formData.append('pageUrl', refinePageUrl.trim());
-      formData.append('requirements', refineRequirements.trim());
-      if (refineAreaDescription.trim()) formData.append('areaDescription', refineAreaDescription.trim());
-      if (refineScreenshot) formData.append('screenshot', refineScreenshot);
-      if (data?.branchName) {
-        formData.append('previousSummary', `Continue refining branch ${data.branchName}.`);
-      }
-      const res = await fetch('/api/edit', { method: 'POST', body: formData });
+      const screenshotUrl = refineScreenshot ? await uploadScreenshot(refineScreenshot) : undefined;
+      const res = await fetch('/api/edit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          repo: repo || undefined,
+          pageUrl: refinePageUrl.trim(),
+          requirements: refineRequirements.trim(),
+          areaDescription: refineAreaDescription.trim() || undefined,
+          previousSummary: data?.branchName ? `Continue refining branch ${data.branchName}.` : undefined,
+          screenshotUrl,
+        }),
+      });
       const json = await res.json();
       if (!res.ok || json.error) throw new Error(json.error || `Refine failed: ${res.status}`);
       setShowRefine(false);
