@@ -49,6 +49,16 @@ export default function NewSitePage() {
   const [dupResult, setDupResult] = useState<{ github: boolean; vercel: boolean; repoName: string } | null>(null);
   const dupTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  function validateDomain(d: string): string | null {
+    if (!d) return null;
+    const projectName = d.replace(/\./g, '-');
+    if (projectName.length > 100) return 'Domain is too long (max 100 characters after conversion)';
+    if (!/^[a-z0-9._-]+$/.test(projectName)) return 'Domain must be lowercase and only contain letters, numbers, hyphens, and dots';
+    if (/---/.test(projectName)) return 'Domain cannot have "--" immediately before or after a dot (e.g. "test--.com")';
+    return null;
+  }
+  const domainError = validateDomain(domain);
+
   useEffect(() => {
     if (dupTimerRef.current) clearTimeout(dupTimerRef.current);
     if (!domain) { setDupStatus('idle'); setDupResult(null); return; }
@@ -295,7 +305,7 @@ export default function NewSitePage() {
             <input
               required
               placeholder="e.g. ramayana-waterpark.guide"
-              style={{ ...s.input, borderColor: dupStatus === 'duplicate' ? '#f87171' : dupStatus === 'ok' ? '#86efac' : '#ddd' }}
+              style={{ ...s.input, borderColor: domainError ? '#f87171' : dupStatus === 'duplicate' ? '#f87171' : dupStatus === 'ok' ? '#86efac' : '#ddd' }}
               value={domain}
               onChange={e => setDomain(e.target.value)}
               disabled={step !== 'basic'}
@@ -327,8 +337,9 @@ export default function NewSitePage() {
                 Production (Cloudflare)
               </label>
             </div>
-            {dupStatus === 'checking' && <div style={{ fontSize: 12, color: '#888', marginTop: 4 }}>Checking for existing project...</div>}
-            {dupStatus === 'ok' && <div style={{ fontSize: 12, color: '#16a34a', marginTop: 4 }}>✓ Name is available</div>}
+            {domainError && <div style={{ fontSize: 12, color: '#dc2626', marginTop: 4 }}>{domainError}</div>}
+            {!domainError && dupStatus === 'checking' && <div style={{ fontSize: 12, color: '#888', marginTop: 4 }}>Checking for existing project...</div>}
+            {!domainError && dupStatus === 'ok' && <div style={{ fontSize: 12, color: '#16a34a', marginTop: 4 }}>✓ Name is available</div>}
             {dupStatus === 'duplicate' && dupResult && (
               <div style={{ fontSize: 12, color: '#dc2626', marginTop: 4 }}>
                 A project named <strong>{dupResult.repoName}</strong> already exists
@@ -496,8 +507,8 @@ export default function NewSitePage() {
           {step === 'basic' && (
             <button
               type="submit"
-              disabled={settingsLoading || dupStatus === 'duplicate' || dupStatus === 'checking'}
-              style={s.btnPrimary(settingsLoading || dupStatus === 'duplicate' || dupStatus === 'checking')}
+              disabled={settingsLoading || !!domainError || dupStatus === 'duplicate' || dupStatus === 'checking'}
+              style={s.btnPrimary(settingsLoading || !!domainError || dupStatus === 'duplicate' || dupStatus === 'checking')}
             >
               {settingsLoading && <span style={s.spinner} />}
               {settingsLoading ? 'Generating Settings...' : 'Auto Settings →'}

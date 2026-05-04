@@ -412,6 +412,14 @@ export async function POST(request: Request) {
     // Generate repo name from domain
     const repoName = config.domain.replace(/\./g, '-');
 
+    // Validate repo/project name against Vercel's constraints
+    if (repoName.length > 100 || !/^[a-z0-9._-]+$/.test(repoName) || /---/.test(repoName)) {
+      return NextResponse.json(
+        { error: `Domain "${config.domain}" produces an invalid project name. It must be lowercase, max 100 characters, and cannot have "--" adjacent to a dot.` },
+        { status: 400 }
+      );
+    }
+
     // Step 1: Create repo from template
     let repoData;
     try {
