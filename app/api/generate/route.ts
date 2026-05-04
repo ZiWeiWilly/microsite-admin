@@ -17,7 +17,7 @@ interface SiteConfig {
   klookUrl: string;
   domain: string;
   domainEnvironment?: 'production' | 'test';
-  affiliateUrl: string;
+  affiliateUrl?: string;
   baseCurrency?: string;
   colors?: { primary: string; secondary: string; accent: string };
   languages?: string[];
@@ -402,7 +402,7 @@ export async function POST(request: Request) {
     const logoIconFile = formData.get('logoIcon') as File | null;
 
     // Validate required fields
-    const required = ['attractionName', 'klookUrl', 'domain', 'affiliateUrl'] as const;
+    const required = ['attractionName', 'klookUrl', 'domain'] as const;
     for (const field of required) {
       if (!config[field]) {
         return NextResponse.json({ error: `Missing required field: ${field}` }, { status: 400 });

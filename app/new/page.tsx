@@ -23,7 +23,7 @@ export default function NewSitePage() {
   const [klookUrl, setKlookUrl] = useState('');
   const [domain, setDomain] = useState('');
   const [domainEnvironment, setDomainEnvironment] = useState<DomainEnvironment>('test');
-  const [affiliateUrl, setAffiliateUrl] = useState('');
+  const [affiliateId, setAffiliateId] = useState('');
   const [headScripts, setHeadScripts] = useState('');
 
   // Logo images — AI-generated (base64) or manually uploaded
@@ -146,7 +146,7 @@ export default function NewSitePage() {
         klookUrl,
         domain,
         domainEnvironment,
-        affiliateUrl,
+        ...(affiliateId.trim() && { affiliateUrl: `https://affiliate.klook.com/redirect?aid=${affiliateId.trim()}` }),
         baseCurrency,
         colors,
         languages,
@@ -340,13 +340,12 @@ export default function NewSitePage() {
             )}
           </div>
           <div style={s.fieldGroup}>
-            <label style={s.label}>Affiliate URL *</label>
+            <label style={s.label}>Affiliate ID <span style={{ fontWeight: 400, color: '#999' }}>(optional)</span></label>
             <input
-              required
-              placeholder="https://affiliate.klook.com/redirect?aid=..."
+              placeholder="e.g. 12345"
               style={s.input}
-              value={affiliateUrl}
-              onChange={e => setAffiliateUrl(e.target.value)}
+              value={affiliateId}
+              onChange={e => setAffiliateId(e.target.value)}
               disabled={step !== 'basic'}
             />
           </div>
