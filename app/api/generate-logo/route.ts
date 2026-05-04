@@ -75,6 +75,13 @@ async function generateAttractionIcon(attractionName: string, history: ChatMessa
   const userHistory = history.filter((msg) => msg.role === 'user' && msg.content.trim().length > 0);
   const messages: ChatMessage[] = [{ role: 'user', content: systemPrompt }, ...userHistory];
 
+  // Ensure the final message always explicitly requests image output,
+  // preventing the model from returning a text-only response on refinement turns.
+  const lastMsg = messages[messages.length - 1];
+  if (lastMsg.role === 'user' && !/generat|creat|draw|render|output.*image/i.test(lastMsg.content)) {
+    messages.push({ role: 'user', content: 'Apply the above feedback and generate the updated logo image.' });
+  }
+
   const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -83,6 +90,7 @@ async function generateAttractionIcon(attractionName: string, history: ChatMessa
     },
     body: JSON.stringify({
       model: 'google/gemini-3.1-flash-image-preview',
+      modalities: ['image', 'text'],
       messages,
     }),
   });
