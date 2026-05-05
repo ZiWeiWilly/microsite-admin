@@ -555,9 +555,10 @@ export async function POST(request: Request) {
     }
 
     // Step 8: Persist site to Supabase (best-effort — don't fail generation)
+    let supabaseWarning: string | undefined;
     try {
       const supabase = getSupabase();
-      await supabase.from('sites').upsert({
+      const { error: upsertError } = await supabase.from('sites').upsert({
         repo_full_name: repoFullName,
         repo_url: repoUrl,
         attraction_name: config.attractionName,
@@ -575,8 +576,13 @@ export async function POST(request: Request) {
         created_by_email: ownerEmail,
         created_by_name: ownerName ?? null,
       }, { onConflict: 'repo_full_name' });
+      if (upsertError) {
+        supabaseWarning = upsertError.message;
+        console.warn('[supabase] upsert error:', supabaseWarning);
+      }
     } catch (e: unknown) {
-      console.warn('[supabase] failed to persist site row:', e instanceof Error ? e.message : e);
+      supabaseWarning = e instanceof Error ? e.message : String(e);
+      console.warn('[supabase] failed to persist site row:', supabaseWarning);
     }
 
     return NextResponse.json({
@@ -591,6 +597,7 @@ export async function POST(request: Request) {
         customDomain: cloudflareResult.customDomain,
       }),
       ...(cloudflareWarning && { cloudflareWarning }),
+      ...(supabaseWarning && { supabaseWarning }),
     });
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : 'Unknown error';
