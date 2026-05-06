@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabase } from '@/app/lib/supabase';
+import {
+  getPreviewDeployment,
+  getProductionSiteUrl,
+} from '@/app/lib/vercel-deployments';
 
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN!;
 const VERCEL_TOKEN = process.env.VERCEL_TOKEN;
-const VERCEL_ORG_ID = process.env.VERCEL_ORG_ID;
 const AI_EDIT_BRANCH_PREFIX = 'ai-edit/';
 
 interface PullRequestSummary {
@@ -34,16 +37,6 @@ interface WorkflowStatusResponse {
   branchName?: string;
 }
 
-async function vercelApi(url: string) {
-  if (!VERCEL_TOKEN) return null;
-  const res = await fetch(url, {
-    headers: { Authorization: `Bearer ${VERCEL_TOKEN}` },
-    next: { revalidate: 0 },
-  });
-  if (!res.ok) return null;
-  return res.json();
-}
-
 async function githubApi(endpoint: string) {
   const res = await fetch(`https://api.github.com${endpoint}`, {
     headers: {
@@ -67,50 +60,6 @@ async function getOpenAiEditPr(repo: string): Promise<PullRequestSummary | null>
   return (
     list.find((pr: PullRequestSummary) => pr?.head?.ref?.startsWith(AI_EDIT_BRANCH_PREFIX)) || null
   );
-}
-
-async function getVercelProject(repo: string) {
-  if (!VERCEL_TOKEN) return null;
-  const repoName = repo.split('/').pop();
-  if (!repoName) return null;
-  const params = new URLSearchParams();
-  if (VERCEL_ORG_ID) params.set('teamId', VERCEL_ORG_ID);
-  const suffix = params.toString();
-  const data = await vercelApi(`https://api.vercel.com/v9/projects/${repoName}${suffix ? `?${suffix}` : ''}`);
-  if (!data?.id) return null;
-  return data;
-}
-
-async function getPreviewDeployment(repo: string, branchName: string) {
-  const project = await getVercelProject(repo);
-  if (!project?.id) return null;
-
-  const params = new URLSearchParams({
-    projectId: project.id,
-    target: 'preview',
-    limit: '1',
-    'meta-githubCommitRef': branchName,
-  });
-  if (VERCEL_ORG_ID) params.set('teamId', VERCEL_ORG_ID);
-  const data = await vercelApi(`https://api.vercel.com/v6/deployments?${params.toString()}`);
-  const deployment = data?.deployments?.[0];
-  if (!deployment) return null;
-
-  return {
-    previewUrl: deployment.url ? `https://${deployment.url}` : undefined,
-    previewState: deployment.readyState || deployment.state || 'UNKNOWN',
-    previewCommitSha:
-      deployment.meta?.githubCommitSha ||
-      deployment.meta?.githubCommitRef ||
-      undefined,
-  };
-}
-
-async function getProductionSiteUrl(repo: string): Promise<string | undefined> {
-  if (!VERCEL_TOKEN) return undefined;
-  const project = await getVercelProject(repo);
-  if (project?.name) return `https://${project.name}.vercel.app`;
-  return undefined;
 }
 
 export async function GET(request: NextRequest) {

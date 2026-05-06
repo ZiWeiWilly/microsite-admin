@@ -38,6 +38,7 @@ export interface Site {
   vercel_url: string | null;
   pages_url: string | null;
   custom_domain: string | null;
+  // Coarse dispatch state; richer per-workflow status lives in /api/sites/health
   status: 'generating' | 'ready' | 'failed' | 'editing';
   created_by_email: string;
   created_by_name: string | null;
