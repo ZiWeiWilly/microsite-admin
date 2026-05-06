@@ -26,15 +26,12 @@ export default function NewSitePage() {
   const [affiliateId, setAffiliateId] = useState('');
   const [headScripts, setHeadScripts] = useState('');
 
-  // Logo images — AI-generated (base64) or manually uploaded
+  // Logo images — generated (base64) or manually uploaded
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoLightFile, setLogoLightFile] = useState<File | null>(null);
   const [logoIconFile, setLogoIconFile] = useState<File | null>(null);
   const [generatedLogos, setGeneratedLogos] = useState<{ logo: string; logoLight: string; logoIcon: string } | null>(null);
   const [logoLoading, setLogoLoading] = useState(false);
-  type ChatMessage = { role: 'user' | 'assistant'; content: string };
-  const [logoHistory, setLogoHistory] = useState<ChatMessage[]>([]);
-  const [logoRefinement, setLogoRefinement] = useState('');
 
   // Settings (auto-filled, user-editable)
   const [baseCurrency, setBaseCurrency] = useState('THB');
@@ -108,26 +105,19 @@ export default function NewSitePage() {
     }
   }
 
-  async function handleGenerateLogo(refinement?: string) {
+  async function handleGenerateLogo() {
     if (!attractionName) return;
     setLogoLoading(true);
-
-    let history: ChatMessage[] = logoHistory;
-    if (refinement?.trim()) {
-      history = [...logoHistory, { role: 'user', content: refinement.trim() }];
-    }
 
     try {
       const res = await fetch('/api/generate-logo', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ attractionName, history }),
+        body: JSON.stringify({ attractionName }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Logo generation failed');
       setGeneratedLogos(data);
-      setLogoHistory(data.history ?? []);
-      setLogoRefinement('');
       setLogoFile(null);
       setLogoLightFile(null);
       setLogoIconFile(null);
@@ -376,7 +366,7 @@ export default function NewSitePage() {
           <div style={{ ...s.divider, margin: '20px 0' }} />
           <div style={s.sectionTitle}>Logo</div>
 
-          {/* AI-generated logo preview + refinement chat */}
+          {/* Generated logo preview */}
           {generatedLogos && (
             <div style={{ marginBottom: 16, borderRadius: 10, border: '1px solid #e2e8f0', overflow: 'hidden' }}>
               <div style={{ padding: '12px 14px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
@@ -401,52 +391,13 @@ export default function NewSitePage() {
                 </div>
               </div>
 
-              {logoHistory.filter(m => m.role === 'user').length > 0 && (
-                <div style={{ padding: '10px 14px', background: '#fff', borderBottom: '1px solid #f0f0f0', maxHeight: 140, overflowY: 'auto' as const }}>
-                  {logoHistory.map((msg, i) => (
-                    msg.role === 'user' ? (
-                      <div key={i} style={{ fontSize: 12, color: '#555', marginBottom: 4 }}>
-                        <span style={{ fontWeight: 600, color: '#0ea5e9' }}>You: </span>{msg.content}
-                      </div>
-                    ) : null
-                  ))}
-                </div>
-              )}
-
-              {step === 'basic' && (
-                <div style={{ display: 'flex', gap: 8, padding: '10px 14px', background: '#fff' }}>
-                  <input
-                    placeholder="Tell Gemini what to change, e.g. make it more vibrant..."
-                    style={{ ...s.input, flex: 1, fontSize: 13 }}
-                    value={logoRefinement}
-                    onChange={e => setLogoRefinement(e.target.value)}
-                    disabled={logoLoading}
-                    onKeyDown={e => { if (e.key === 'Enter') e.preventDefault(); }}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => handleGenerateLogo(logoRefinement)}
-                    disabled={!logoRefinement.trim() || logoLoading}
-                    style={{
-                      padding: '8px 16px', borderRadius: 8, fontSize: 13, fontWeight: 600 as const,
-                      border: 'none', background: (!logoRefinement.trim() || logoLoading) ? '#e2e8f0' : '#0ea5e9',
-                      color: (!logoRefinement.trim() || logoLoading) ? '#aaa' : '#fff',
-                      cursor: (!logoRefinement.trim() || logoLoading) ? 'not-allowed' : 'pointer',
-                      whiteSpace: 'nowrap' as const, display: 'flex', alignItems: 'center' as const, gap: 6,
-                    }}
-                  >
-                    {logoLoading && <span style={{ ...s.spinner, border: '2px solid rgba(255,255,255,0.4)', borderTopColor: '#fff' }} />}
-                    {logoLoading ? '' : 'Refine'}
-                  </button>
-                </div>
-              )}
             </div>
           )}
 
           <div style={s.fieldGroup}>
             <button
               type="button"
-              onClick={() => { setLogoHistory([]); handleGenerateLogo(); }}
+              onClick={() => handleGenerateLogo()}
               disabled={!attractionName || logoLoading || step !== 'basic'}
               style={{
                 padding: '10px 20px', borderRadius: 8, fontSize: 14, fontWeight: 600 as const,
@@ -455,14 +406,14 @@ export default function NewSitePage() {
                 display: 'flex', alignItems: 'center' as const, gap: 8,
               }}
             >
-              {logoLoading && !logoRefinement && <span style={{ ...s.spinner, border: '2px solid #bae6fd', borderTopColor: '#0ea5e9' }} />}
-              {logoLoading && !logoRefinement ? 'Generating...' : generatedLogos ? 'Regenerate from Scratch' : 'Generate Logo with AI'}
+              {logoLoading && <span style={{ ...s.spinner, border: '2px solid #bae6fd', borderTopColor: '#0ea5e9' }} />}
+              {logoLoading ? 'Generating...' : generatedLogos ? 'Regenerate Logo' : 'Generate Logo'}
             </button>
-            <div style={s.fileHint}>Uses Gemini to create a "Powered by Klook" branded logo for navbar, footer, and favicon.</div>
+            <div style={s.fileHint}>Generates a text-based "Powered by Klook" branded logo for navbar, footer, and favicon.</div>
           </div>
 
           <div style={{ marginTop: 4 }}>
-            <div style={{ fontSize: 11, color: '#aaa', marginBottom: 10 }}>Or upload manually (overrides AI-generated):</div>
+            <div style={{ fontSize: 11, color: '#aaa', marginBottom: 10 }}>Or upload manually (overrides generated):</div>
             {([
               { label: 'Logo — Navbar', file: logoFile, setter: setLogoFile, name: 'logo.png', generated: generatedLogos?.logo, previewBg: '#fff' },
               { label: 'Logo Light — Footer', file: logoLightFile, setter: setLogoLightFile, name: 'logo-light.png', generated: generatedLogos?.logoLight, previewBg: '#0f172a' },
