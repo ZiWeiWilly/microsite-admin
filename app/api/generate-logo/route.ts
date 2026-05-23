@@ -46,7 +46,6 @@ async function generateTextImage(text: string, color: string, height: number): P
   let fontSize = Math.round(height * 0.58);
   let estWidth = Math.ceil(text.length * fontSize * 0.62) + 20;
 
-  // Scale down font if text would be too wide
   if (estWidth > MAX_TEXT_WIDTH) {
     fontSize = Math.floor(fontSize * (MAX_TEXT_WIDTH / estWidth));
     estWidth = MAX_TEXT_WIDTH;
