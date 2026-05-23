@@ -139,7 +139,7 @@ async function dispatchGenerateWorkflowWithRetry(
         body: JSON.stringify({
           ref,
           inputs: {
-            config: JSON.stringify(config),
+            config: JSON.stringify(workflowConfig),
           },
         }),
       });
