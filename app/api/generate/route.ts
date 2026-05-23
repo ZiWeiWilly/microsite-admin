@@ -100,10 +100,33 @@ async function waitForRepoReady(
   );
 }
 
+/**
+ * Each template's generate-site.js uses different field names.
+ * Transform the admin's unified SiteConfig into the shape each script expects.
+ */
+function buildWorkflowConfig(config: SiteConfig, siteLevel: string): Record<string, unknown> {
+  const common = {
+    domain: config.domain,
+    affiliateUrl: config.affiliateUrl,
+    baseCurrency: config.baseCurrency,
+    colors: config.colors,
+    languages: config.languages,
+    headScripts: config.headScripts,
+  };
+  if (siteLevel === 'city') {
+    return { ...common, cityName: config.attractionName, klookDestinationUrl: config.klookUrl };
+  }
+  if (siteLevel === 'country') {
+    return { ...common, countryName: config.attractionName, klookDestinationUrl: config.klookUrl };
+  }
+  // poi (default)
+  return { ...common, attractionName: config.attractionName, klookUrl: config.klookUrl };
+}
+
 async function dispatchGenerateWorkflowWithRetry(
   repoFullName: string,
   ref: string,
-  config: SiteConfig,
+  workflowConfig: Record<string, unknown>,
   maxAttempts = 6
 ) {
   let lastError: Error | null = null;
@@ -530,7 +553,7 @@ export async function POST(request: Request) {
 
     // Step 6: Trigger the generate-and-deploy workflow
     try {
-      await dispatchGenerateWorkflowWithRetry(repoFullName, defaultBranch, config);
+      await dispatchGenerateWorkflowWithRetry(repoFullName, defaultBranch, buildWorkflowConfig(config, siteLevel));
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       console.error('[generate] workflow dispatch failed after retries:', msg);
