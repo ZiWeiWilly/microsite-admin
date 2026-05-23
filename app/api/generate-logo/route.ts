@@ -42,6 +42,11 @@ async function suggestBrandColor(attractionName: string): Promise<string> {
 
 const MAX_TEXT_WIDTH = 480;
 
+// Load bundled font once at module init — guarantees consistent rendering across all environments
+const FONT_PATH = path.join(process.cwd(), 'public', 'fonts', 'Inter.ttf');
+const FONT_BASE64 = fs.readFileSync(FONT_PATH).toString('base64');
+const FONT_FACE = `<defs><style>@font-face{font-family:'Inter';font-weight:700;src:url('data:font/truetype;base64,${FONT_BASE64}') format('truetype');}</style></defs>`;
+
 async function generateTextImage(text: string, color: string, height: number): Promise<Buffer> {
   let fontSize = Math.round(height * 0.58);
   let estWidth = Math.ceil(text.length * fontSize * 0.62) + 20;
@@ -54,12 +59,13 @@ async function generateTextImage(text: string, color: string, height: number): P
   const baseline = Math.round(height * 0.5 + fontSize * 0.35);
 
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${estWidth}" height="${height}">
+    ${FONT_FACE}
     <text
       x="0"
       y="${baseline}"
-      font-family="DejaVu Sans, Arial, Helvetica, Liberation Sans, sans-serif"
+      font-family="Inter"
       font-size="${fontSize}px"
-      font-weight="bold"
+      font-weight="700"
       fill="${color}"
     >${escapeXml(text)}</text>
   </svg>`;
@@ -112,13 +118,14 @@ async function composeLogos(attractionName: string, brandColor: string): Promise
   const iconSize = 128;
   const iconFontSize = 80;
   const iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="${iconSize}" height="${iconSize}">
+    ${FONT_FACE}
     <rect width="${iconSize}" height="${iconSize}" rx="16" fill="${brandColor}"/>
     <text
       x="${iconSize / 2}"
       y="${Math.round(iconSize * 0.72)}"
-      font-family="DejaVu Sans, Arial, Helvetica, Liberation Sans, sans-serif"
+      font-family="Inter"
       font-size="${iconFontSize}px"
-      font-weight="bold"
+      font-weight="700"
       fill="white"
       text-anchor="middle"
     >${escapeXml(attractionName.charAt(0).toUpperCase())}</text>
