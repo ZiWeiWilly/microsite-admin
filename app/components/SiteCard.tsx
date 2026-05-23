@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import type { Site } from '@/app/lib/supabase';
 import type { SiteHealth } from '@/app/lib/types';
 import {
@@ -22,9 +23,11 @@ interface SiteCardProps {
   site: Site;
   health: SiteHealth | undefined;
   healthLoading: boolean;
+  onDelete: (id: string) => void;
 }
 
-export function SiteCard({ site, health, healthLoading }: SiteCardProps) {
+export function SiteCard({ site, health, healthLoading, onDelete }: SiteCardProps) {
+  const [deleting, setDeleting] = useState(false);
   const siteUrl = site.vercel_url ?? site.pages_url ?? site.custom_domain ?? null;
 
   const githubError = health?.errors?.find((e) => e.source === 'github');
@@ -106,6 +109,29 @@ export function SiteCard({ site, health, healthLoading }: SiteCardProps) {
             Repo ↗
           </a>
         )}
+        <button
+          disabled={deleting}
+          onClick={async () => {
+            if (!confirm(`Remove "${site.attraction_name}" from the database? This only deletes the record — the GitHub repo and Vercel project are not affected.`)) return;
+            setDeleting(true);
+            try {
+              const res = await fetch(`/api/sites/${site.id}`, { method: 'DELETE' });
+              if (!res.ok) {
+                const body = await res.json();
+                alert(body.error ?? 'Failed to delete');
+                setDeleting(false);
+              } else {
+                onDelete(site.id);
+              }
+            } catch {
+              alert('Failed to delete');
+              setDeleting(false);
+            }
+          }}
+          style={s.deleteBtn}
+        >
+          {deleting ? 'Removing…' : 'Remove'}
+        </button>
       </div>
     </div>
   );
@@ -122,7 +148,19 @@ const s = {
   siteName: { fontSize: 17, fontWeight: 700, color: '#111', margin: '4px 0 2px' },
   siteDomain: { fontSize: 13, color: '#888', margin: 0, fontFamily: 'monospace' },
   meta: { fontSize: 12, color: '#aaa', marginTop: 4, marginBottom: 12 },
-  actions: { display: 'flex', gap: 8, flexWrap: 'wrap' as const },
+  actions: { display: 'flex', gap: 8, flexWrap: 'wrap' as const, alignItems: 'center' },
+  deleteBtn: {
+    display: 'inline-block',
+    padding: '6px 14px',
+    fontSize: 13,
+    fontWeight: 500,
+    color: '#dc2626',
+    background: '#fff5f5',
+    border: '1px solid #fecaca',
+    borderRadius: 6,
+    cursor: 'pointer',
+    marginLeft: 'auto',
+  },
   actionBtn: {
     display: 'inline-block',
     padding: '6px 14px',

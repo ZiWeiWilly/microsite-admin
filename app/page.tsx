@@ -132,6 +132,7 @@ export default function Dashboard() {
                 site={site}
                 health={health[site.repo_full_name]}
                 healthLoading={healthLoading}
+                onDelete={(id) => setSites((prev) => prev.filter((s) => s.id !== id))}
               />
             ))}
           </div>

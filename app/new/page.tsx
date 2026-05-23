@@ -12,11 +12,47 @@ const CURRENCIES = [
 
 type Step = 'basic' | 'settings' | 'done';
 type DomainEnvironment = 'production' | 'test';
+type SiteLevel = 'poi' | 'city' | 'country';
+
+const LEVEL_CONFIG: Record<SiteLevel, {
+  label: string;
+  nameLabel: string;
+  namePlaceholder: string;
+  urlLabel: string;
+  urlPlaceholder: string;
+  domainPlaceholder: string;
+}> = {
+  poi: {
+    label: 'POI',
+    nameLabel: 'Attraction Name',
+    namePlaceholder: 'e.g. Ramayana Water Park',
+    urlLabel: 'Klook Activity URL',
+    urlPlaceholder: 'https://www.klook.com/activity/12345-...',
+    domainPlaceholder: 'e.g. ramayana-waterpark.guide',
+  },
+  city: {
+    label: 'City',
+    nameLabel: 'City Name',
+    namePlaceholder: 'e.g. Bangkok',
+    urlLabel: 'Klook City URL',
+    urlPlaceholder: 'https://www.klook.com/city-attractions/...',
+    domainPlaceholder: 'e.g. bangkok-travel.guide',
+  },
+  country: {
+    label: 'Country',
+    nameLabel: 'Country Name',
+    namePlaceholder: 'e.g. Thailand',
+    urlLabel: 'Klook Country URL',
+    urlPlaceholder: 'https://www.klook.com/country/...',
+    domainPlaceholder: 'e.g. thailand-travel.guide',
+  },
+};
 
 export default function NewSitePage() {
   const router = useRouter();
   const { data: session } = useSession();
   const [step, setStep] = useState<Step>('basic');
+  const [siteLevel, setSiteLevel] = useState<SiteLevel>('poi');
 
   // Basic info
   const [attractionName, setAttractionName] = useState('');
@@ -146,6 +182,7 @@ export default function NewSitePage() {
         klookUrl,
         domain,
         domainEnvironment,
+        siteLevel,
         ...(affiliateId.trim() && { affiliateUrl: `https://affiliate.klook.com/redirect?aid=${affiliateId.trim()}` }),
         baseCurrency,
         colors,
@@ -265,14 +302,38 @@ export default function NewSitePage() {
         <h1 style={s.title}>New Site</h1>
         <p style={s.subtitle}>Generate a new Klook affiliate landing page in two steps.</p>
 
+        {/* ── Site Level ── */}
+        <div style={s.fieldGroup}>
+          <div style={s.sectionTitle}>Site Level</div>
+          <div style={{ display: 'flex', gap: 10 }}>
+            {(['poi', 'city', 'country'] as SiteLevel[]).map(level => (
+              <button
+                key={level}
+                type="button"
+                onClick={() => step === 'basic' && setSiteLevel(level)}
+                disabled={step !== 'basic'}
+                style={{
+                  flex: 1, padding: '10px 0', borderRadius: 8, fontSize: 14, fontWeight: 600 as const,
+                  border: `2px solid ${siteLevel === level ? '#0ea5e9' : '#e5e7eb'}`,
+                  background: siteLevel === level ? '#f0f9ff' : '#fff',
+                  color: siteLevel === level ? '#0369a1' : '#6b7280',
+                  cursor: step !== 'basic' ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {LEVEL_CONFIG[level].label}
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* ── Step 1: Basic Info ── */}
         <div style={s.sectionTitle}>Step 1 — Basic Info</div>
         <form onSubmit={handleAutoSettings}>
           <div style={s.fieldGroup}>
-            <label style={s.label}>Attraction Name *</label>
+            <label style={s.label}>{LEVEL_CONFIG[siteLevel].nameLabel} *</label>
             <input
               required
-              placeholder="e.g. Ramayana Water Park"
+              placeholder={LEVEL_CONFIG[siteLevel].namePlaceholder}
               style={s.input}
               value={attractionName}
               onChange={e => setAttractionName(e.target.value)}
@@ -280,10 +341,10 @@ export default function NewSitePage() {
             />
           </div>
           <div style={s.fieldGroup}>
-            <label style={s.label}>Klook Activity URL *</label>
+            <label style={s.label}>{LEVEL_CONFIG[siteLevel].urlLabel} *</label>
             <input
               required
-              placeholder="https://www.klook.com/activity/12345-..."
+              placeholder={LEVEL_CONFIG[siteLevel].urlPlaceholder}
               style={s.input}
               value={klookUrl}
               onChange={e => setKlookUrl(e.target.value)}
@@ -294,7 +355,7 @@ export default function NewSitePage() {
             <label style={s.label}>Domain *</label>
             <input
               required
-              placeholder="e.g. ramayana-waterpark.guide"
+              placeholder={LEVEL_CONFIG[siteLevel].domainPlaceholder}
               style={{ ...s.input, borderColor: domainError ? '#f87171' : dupStatus === 'duplicate' ? '#f87171' : dupStatus === 'ok' ? '#86efac' : '#ddd' }}
               value={domain}
               onChange={e => setDomain(e.target.value)}

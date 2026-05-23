@@ -23,6 +23,8 @@ export function getSupabase(): SupabaseClient {
   return cached;
 }
 
+export type SiteLevel = 'poi' | 'city' | 'country';
+
 export interface Site {
   id: string;
   repo_full_name: string;
@@ -30,6 +32,7 @@ export interface Site {
   attraction_name: string;
   klook_url: string;
   domain: string;
+  site_level: SiteLevel | null;
   affiliate_url: string;
   base_currency: string | null;
   languages: string[] | null;

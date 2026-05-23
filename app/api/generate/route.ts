@@ -5,8 +5,13 @@ import { getSupabase } from '@/app/lib/supabase';
 
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN!;
 const TEMPLATE_OWNER = process.env.TEMPLATE_OWNER || 'ZiWeiWilly';
-const TEMPLATE_REPO = process.env.TEMPLATE_REPO || 'microsite-template';
 const TARGET_OWNER = process.env.TARGET_OWNER || TEMPLATE_OWNER;
+
+const TEMPLATE_REPOS: Record<string, string> = {
+  poi: process.env.TEMPLATE_REPO || 'microsite-template',
+  city: process.env.TEMPLATE_REPO_CITY || 'microsite-template-city',
+  country: process.env.TEMPLATE_REPO_COUNTRY || 'microsite-template-country',
+};
 const CLOUDFLARE_ACCOUNT_ID = process.env.CLOUDFLARE_ACCOUNT_ID;
 const CLOUDFLARE_API_TOKEN = process.env.CLOUDFLARE_API_TOKEN;
 const VERCEL_TOKEN = process.env.VERCEL_TOKEN;
@@ -17,6 +22,7 @@ interface SiteConfig {
   klookUrl: string;
   domain: string;
   domainEnvironment?: 'production' | 'test';
+  siteLevel?: 'poi' | 'city' | 'country';
   affiliateUrl?: string;
   baseCurrency?: string;
   colors?: { primary: string; secondary: string; accent: string };
@@ -397,6 +403,8 @@ export async function POST(request: Request) {
     const formData = await request.formData();
     const config: SiteConfig = JSON.parse(formData.get('config') as string);
     const domainEnvironment = config.domainEnvironment === 'production' ? 'production' : 'test';
+    const siteLevel = config.siteLevel ?? 'poi';
+    const templateRepo = TEMPLATE_REPOS[siteLevel] ?? TEMPLATE_REPOS.poi;
     const logoFile = formData.get('logo') as File | null;
     const logoLightFile = formData.get('logoLight') as File | null;
     const logoIconFile = formData.get('logoIcon') as File | null;
@@ -423,7 +431,7 @@ export async function POST(request: Request) {
     // Step 1: Create repo from template
     let repoData;
     try {
-      repoData = await githubApi(`/repos/${TEMPLATE_OWNER}/${TEMPLATE_REPO}/generate`, {
+      repoData = await githubApi(`/repos/${TEMPLATE_OWNER}/${templateRepo}/generate`, {
         method: 'POST',
         body: JSON.stringify({
           owner: TARGET_OWNER,
@@ -435,9 +443,13 @@ export async function POST(request: Request) {
       });
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
-      // If repo already exists, try to use it
-      if (msg.includes('already exists') || msg.includes('422')) {
+      if (msg.includes('already exists')) {
         repoData = await githubApi(`/repos/${TARGET_OWNER}/${repoName}`);
+      } else if (msg.includes('422')) {
+        throw new Error(
+          `GitHub rejected template generation for "${templateRepo}" (422). ` +
+          `Ensure the repo exists and is marked as a Template repository in its Settings.`
+        );
       } else {
         throw e;
       }
@@ -564,6 +576,7 @@ export async function POST(request: Request) {
         attraction_name: config.attractionName,
         klook_url: config.klookUrl,
         domain: config.domain,
+        site_level: siteLevel,
         affiliate_url: config.affiliateUrl,
         base_currency: config.baseCurrency ?? null,
         languages: config.languages ?? null,
