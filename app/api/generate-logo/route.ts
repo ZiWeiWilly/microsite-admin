@@ -43,9 +43,9 @@ async function suggestBrandColor(attractionName: string): Promise<string> {
 const MAX_TEXT_WIDTH = 480;
 
 // Load bundled font once at module init — guarantees consistent rendering across all environments
-const FONT_PATH = path.join(process.cwd(), 'public', 'fonts', 'Inter.ttf');
+const FONT_PATH = path.join(process.cwd(), 'public', 'fonts', 'Inter-Bold.woff2');
 const FONT_BASE64 = fs.readFileSync(FONT_PATH).toString('base64');
-const FONT_FACE = `<defs><style>@font-face{font-family:'Inter';font-weight:700;src:url('data:font/truetype;base64,${FONT_BASE64}') format('truetype');}</style></defs>`;
+const FONT_FACE = `<defs><style>@font-face{font-family:'Inter';font-weight:700;src:url('data:font/woff2;base64,${FONT_BASE64}') format('woff2');}</style></defs>`;
 
 async function generateTextImage(text: string, color: string, height: number): Promise<Buffer> {
   let fontSize = Math.round(height * 0.58);
