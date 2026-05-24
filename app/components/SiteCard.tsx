@@ -113,11 +113,6 @@ export function SiteCard({ site, health, healthLoading, onDelete }: SiteCardProp
         >
           Edit with AI
         </a>
-        {siteUrl && (
-          <a href={siteUrl} target="_blank" rel="noopener noreferrer" style={s.urlBtn}>
-            {siteUrl.replace(/^https?:\/\//, '')}
-          </a>
-        )}
         <button
           disabled={deleting}
           onClick={async () => {
@@ -180,22 +175,6 @@ const s = {
     border: '1px solid #bae6fd',
     borderRadius: 6,
     textDecoration: 'none',
-  },
-  urlBtn: {
-    display: 'inline-block',
-    padding: '6px 14px',
-    fontSize: 12,
-    fontWeight: 500,
-    color: '#6b7280',
-    background: '#f9fafb',
-    border: '1px solid #e5e7eb',
-    borderRadius: 6,
-    textDecoration: 'none',
-    fontFamily: 'monospace',
-    maxWidth: 220,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap' as const,
   },
   openSiteBtn: {
     display: 'inline-block',
