@@ -105,12 +105,13 @@ export async function GET(request: NextRequest) {
       const deploymentUrl = h.deployment?.url;
       if (deploymentUrl && h.deployment?.state === 'READY' && !existingUrls[h.repo_full_name]) {
         urlUpdates.push(
-          supabase
-            .from('sites')
-            .update({ vercel_url: deploymentUrl })
-            .eq('repo_full_name', h.repo_full_name)
-            .is('vercel_url', null)
-            .then()
+          Promise.resolve(
+            supabase
+              .from('sites')
+              .update({ vercel_url: deploymentUrl })
+              .eq('repo_full_name', h.repo_full_name)
+              .is('vercel_url', null)
+          )
         );
       }
     }
