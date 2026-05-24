@@ -28,7 +28,7 @@ const LEVEL_CONFIG: Record<SiteLevel, {
     namePlaceholder: 'e.g. Ramayana Water Park',
     urlLabel: 'Klook Activity URL',
     urlPlaceholder: 'https://www.klook.com/activity/12345-...',
-    domainPlaceholder: 'e.g. ramayana-waterpark.guide',
+    domainPlaceholder: 'e.g. ramayana-waterpark-th',
   },
   city: {
     label: 'City',
@@ -36,7 +36,7 @@ const LEVEL_CONFIG: Record<SiteLevel, {
     namePlaceholder: 'e.g. Bangkok',
     urlLabel: 'Klook City URL',
     urlPlaceholder: 'https://www.klook.com/city-attractions/...',
-    domainPlaceholder: 'e.g. bangkok-travel.guide',
+    domainPlaceholder: 'e.g. bangkok-travel-th',
   },
   country: {
     label: 'Country',
@@ -44,7 +44,7 @@ const LEVEL_CONFIG: Record<SiteLevel, {
     namePlaceholder: 'e.g. Thailand',
     urlLabel: 'Klook Country URL',
     urlPlaceholder: 'https://www.klook.com/country/...',
-    domainPlaceholder: 'e.g. thailand-travel.guide',
+    domainPlaceholder: 'e.g. thailand-travel-guide',
   },
 };
 
@@ -84,10 +84,11 @@ export default function NewSitePage() {
 
   function validateDomain(d: string): string | null {
     if (!d) return null;
-    const projectName = d.replace(/\./g, '-');
-    if (projectName.length > 100) return 'Domain is too long (max 100 characters after conversion)';
-    if (!/^[a-z0-9._-]+$/.test(projectName)) return 'Domain must be lowercase and only contain letters, numbers, hyphens, and dots';
-    if (/---/.test(projectName)) return 'Domain cannot have "--" immediately before or after a dot (e.g. "test--.com")';
+    if (d.length > 100) return 'Domain is too long (max 100 characters)';
+    if (!/^[a-z0-9-]+$/.test(d)) return 'Domain must be lowercase and only contain letters, numbers, and hyphens';
+    if ((d.match(/-/g) || []).length < 2) return 'Domain must contain at least two hyphens (e.g. abc-bsc-sdf)';
+    if (/--/.test(d)) return 'Domain cannot contain consecutive hyphens';
+    if (d.startsWith('-') || d.endsWith('-')) return 'Domain cannot start or end with a hyphen';
     return null;
   }
   const domainError = validateDomain(domain);
@@ -353,14 +354,21 @@ export default function NewSitePage() {
           </div>
           <div style={s.fieldGroup}>
             <label style={s.label}>Domain *</label>
-            <input
-              required
-              placeholder={LEVEL_CONFIG[siteLevel].domainPlaceholder}
-              style={{ ...s.input, borderColor: domainError ? '#f87171' : dupStatus === 'duplicate' ? '#f87171' : dupStatus === 'ok' ? '#86efac' : '#ddd' }}
-              value={domain}
-              onChange={e => setDomain(e.target.value)}
-              disabled={step !== 'basic'}
-            />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
+              <input
+                required
+                placeholder={LEVEL_CONFIG[siteLevel].domainPlaceholder}
+                style={{ ...s.input, flex: 1, borderColor: domainError ? '#f87171' : dupStatus === 'duplicate' ? '#f87171' : dupStatus === 'ok' ? '#86efac' : '#ddd', borderRadius: domainEnvironment === 'test' ? '6px 0 0 6px' : undefined }}
+                value={domain}
+                onChange={e => setDomain(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
+                disabled={step !== 'basic'}
+              />
+              {domainEnvironment === 'test' && (
+                <span style={{ display: 'inline-flex', alignItems: 'center', padding: '10px 12px', background: '#f3f4f6', border: '1px solid #ddd', borderLeft: 'none', borderRadius: '0 6px 6px 0', fontSize: 14, color: '#6b7280', whiteSpace: 'nowrap' }}>
+                  .vercel.app
+                </span>
+              )}
+            </div>
             <div style={s.radioGroup}>
               <label style={s.radioOption(step !== 'basic')}>
                 <input
