@@ -60,6 +60,11 @@ export function SiteCard({ site, health, healthLoading, onDelete }: SiteCardProp
           <p style={s.siteDomain}>{site.domain}</p>
         </div>
 
+        {siteUrl && (
+          <a href={siteUrl} target="_blank" rel="noopener noreferrer" style={s.openSiteBtn}>
+            Open site ↗
+          </a>
+        )}
       </div>
 
       {/* Workflow chips */}
