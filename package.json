@@ -8,6 +8,7 @@
     "start": "next start"
   },
   "dependencies": {
+    "@fontsource/inter": "^5.2.8",
     "@supabase/supabase-js": "^2.104.1",
     "libsodium-wrappers": "^0.8.2",
     "next": "^15.0.0",

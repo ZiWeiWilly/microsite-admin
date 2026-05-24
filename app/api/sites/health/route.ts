@@ -110,6 +110,7 @@ export async function GET(request: NextRequest) {
             .update({ vercel_url: deploymentUrl })
             .eq('repo_full_name', h.repo_full_name)
             .is('vercel_url', null)
+            .then()
         );
       }
     }
