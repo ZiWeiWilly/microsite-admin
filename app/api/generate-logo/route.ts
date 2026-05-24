@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import sharp from 'sharp';
 import path from 'path';
 import fs from 'fs';
-import opentype from 'opentype.js';
+import * as opentype from 'opentype.js';
 
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY!;
 
