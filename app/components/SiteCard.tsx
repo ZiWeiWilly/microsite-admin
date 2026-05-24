@@ -28,7 +28,7 @@ interface SiteCardProps {
 
 export function SiteCard({ site, health, healthLoading, onDelete }: SiteCardProps) {
   const [deleting, setDeleting] = useState(false);
-  const siteUrl = site.vercel_url ?? site.pages_url ?? site.custom_domain ?? null;
+  const siteUrl = site.vercel_url ?? site.pages_url ?? site.custom_domain ?? health?.deployment?.url ?? null;
 
   const githubError = health?.errors?.find((e) => e.source === 'github');
   const vercelError = health?.errors?.find((e) => e.source === 'vercel');

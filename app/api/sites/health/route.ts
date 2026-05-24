@@ -75,28 +75,45 @@ export async function GET(request: NextRequest) {
   try {
     const reposParam = request.nextUrl.searchParams.get('repos');
 
+    const supabase = getSupabase();
+
     let repos: string[];
+    let existingUrls: Record<string, string | null> = {};
     if (reposParam) {
       repos = reposParam
         .split(',')
         .map((r) => r.trim())
         .filter(Boolean);
     } else {
-      const supabase = getSupabase();
       const { data, error } = await supabase
         .from('sites')
-        .select('repo_full_name')
+        .select('repo_full_name, vercel_url')
         .order('created_at', { ascending: false });
       if (error) throw error;
       repos = (data ?? []).map((row: { repo_full_name: string }) => row.repo_full_name);
+      for (const row of data ?? []) {
+        existingUrls[row.repo_full_name] = row.vercel_url ?? null;
+      }
     }
 
     const healthList = await runBounded(repos, processSite, CONCURRENCY);
 
     const sites: SitesHealthResponse['sites'] = {};
+    const urlUpdates: Promise<unknown>[] = [];
     for (const h of healthList) {
       sites[h.repo_full_name] = h;
+      const deploymentUrl = h.deployment?.url;
+      if (deploymentUrl && h.deployment?.state === 'READY' && !existingUrls[h.repo_full_name]) {
+        urlUpdates.push(
+          supabase
+            .from('sites')
+            .update({ vercel_url: deploymentUrl })
+            .eq('repo_full_name', h.repo_full_name)
+            .is('vercel_url', null)
+        );
+      }
     }
+    await Promise.allSettled(urlUpdates);
 
     return NextResponse.json({ sites } satisfies SitesHealthResponse);
   } catch (e: unknown) {
