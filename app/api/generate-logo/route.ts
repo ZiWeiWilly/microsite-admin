@@ -2,17 +2,9 @@ import { NextResponse } from 'next/server';
 import sharp from 'sharp';
 import path from 'path';
 import fs from 'fs';
+import opentype from 'opentype.js';
 
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY!;
-
-function escapeXml(str: string): string {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;');
-}
 
 async function suggestBrandColor(attractionName: string): Promise<string> {
   const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
@@ -40,35 +32,43 @@ async function suggestBrandColor(attractionName: string): Promise<string> {
   return match ? match[0] : '#1a1a2e';
 }
 
+// Use opentype.js glyph-by-glyph path rendering — bypasses librsvg font loading entirely.
+// librsvg on Linux (Vercel) silently fails to load woff/woff2 regardless of how they're
+// referenced. font.getPath() is also avoided due to Inter's CCMP table triggering a
+// known opentype.js bug; per-glyph rendering works correctly.
+const FONT_PATH = path.join(process.cwd(), 'public', 'fonts', 'Inter-Bold.woff');
+const FONT = opentype.parse(fs.readFileSync(FONT_PATH));
+
 const MAX_TEXT_WIDTH = 480;
 
-// Load bundled font path for librsvg — file:// URL avoids base64 data URI limitations in librsvg
-const FONT_PATH = path.join(process.cwd(), 'public', 'fonts', 'Inter-Bold.woff2');
-const FONT_FACE = `<defs><style>@font-face{font-family:'Inter';font-weight:700;src:url('file://${FONT_PATH}') format('woff2');}</style></defs>`;
+function textToSvgPaths(text: string, x: number, y: number, fontSize: number, fill: string): { paths: string; width: number } {
+  const scale = fontSize / FONT.unitsPerEm;
+  let curX = x;
+  const parts: string[] = [];
+  for (const char of text) {
+    const glyph = FONT.charToGlyph(char);
+    const p = glyph.getPath(curX, y, fontSize);
+    p.fill = fill;
+    parts.push(p.toSVG(2));
+    curX += (glyph.advanceWidth ?? 0) * scale;
+  }
+  return { paths: parts.join(''), width: curX - x };
+}
 
 async function generateTextImage(text: string, color: string, height: number): Promise<Buffer> {
   let fontSize = Math.round(height * 0.58);
-  let estWidth = Math.ceil(text.length * fontSize * 0.62) + 20;
+  const { width: rawWidth } = textToSvgPaths(text, 0, 0, fontSize, color);
+  let textWidth = Math.ceil(rawWidth) + 10;
 
-  if (estWidth > MAX_TEXT_WIDTH) {
-    fontSize = Math.floor(fontSize * (MAX_TEXT_WIDTH / estWidth));
-    estWidth = MAX_TEXT_WIDTH;
+  if (textWidth > MAX_TEXT_WIDTH) {
+    fontSize = Math.floor(fontSize * (MAX_TEXT_WIDTH / textWidth));
+    textWidth = MAX_TEXT_WIDTH;
   }
 
   const baseline = Math.round(height * 0.5 + fontSize * 0.35);
+  const { paths } = textToSvgPaths(text, 0, baseline, fontSize, color);
 
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${estWidth}" height="${height}">
-    ${FONT_FACE}
-    <text
-      x="0"
-      y="${baseline}"
-      font-family="Inter"
-      font-size="${fontSize}px"
-      font-weight="700"
-      fill="${color}"
-    >${escapeXml(text)}</text>
-  </svg>`;
-
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${textWidth}" height="${height}">${paths}</svg>`;
   return sharp(Buffer.from(svg)).png().toBuffer();
 }
 
@@ -84,7 +84,6 @@ async function composeLogos(attractionName: string, brandColor: string): Promise
   const height = poweredByMeta.height ?? 126;
   const gap = 24;
 
-  // logo.png — brand color text on light backgrounds
   const darkTextBuffer = await generateTextImage(attractionName, brandColor, height);
   const darkTextMeta = await sharp(darkTextBuffer).metadata();
   const textWidth = darkTextMeta.width ?? 400;
@@ -101,7 +100,6 @@ async function composeLogos(attractionName: string, brandColor: string): Promise
     .png()
     .toBuffer();
 
-  // logo-light.png — white text on dark backgrounds
   const lightTextBuffer = await generateTextImage(attractionName, '#ffffff', height);
 
   const logoLight = await sharp({
@@ -116,18 +114,18 @@ async function composeLogos(attractionName: string, brandColor: string): Promise
 
   const iconSize = 128;
   const iconFontSize = 80;
+  const char = attractionName.charAt(0).toUpperCase();
+  const charScale = iconFontSize / FONT.unitsPerEm;
+  const glyph = FONT.charToGlyph(char);
+  const charWidth = (glyph.advanceWidth ?? 0) * charScale;
+  const charX = (iconSize - charWidth) / 2;
+  const charY = Math.round(iconSize * 0.72);
+  const charPath = glyph.getPath(charX, charY, iconFontSize);
+  charPath.fill = 'white';
+
   const iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="${iconSize}" height="${iconSize}">
-    ${FONT_FACE}
     <rect width="${iconSize}" height="${iconSize}" rx="16" fill="${brandColor}"/>
-    <text
-      x="${iconSize / 2}"
-      y="${Math.round(iconSize * 0.72)}"
-      font-family="Inter"
-      font-size="${iconFontSize}px"
-      font-weight="700"
-      fill="white"
-      text-anchor="middle"
-    >${escapeXml(attractionName.charAt(0).toUpperCase())}</text>
+    ${charPath.toSVG(2)}
   </svg>`;
 
   const logoIcon = await sharp(Buffer.from(iconSvg)).png().toBuffer();
