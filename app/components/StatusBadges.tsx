@@ -84,7 +84,7 @@ function resolveChipKey(workflow: WorkflowSummary): ChipKey {
   return 'no_runs';
 }
 
-export function WorkflowChip({ workflow }: { workflow: WorkflowSummary }) {
+export function WorkflowChip({ workflow, statusHref }: { workflow: WorkflowSummary; statusHref?: string }) {
   const key = resolveChipKey(workflow);
   const cfg = CHIP_CFG[key];
   const run = workflow.latestRun;
@@ -125,12 +125,13 @@ export function WorkflowChip({ workflow }: { workflow: WorkflowSummary }) {
     </span>
   );
 
-  if (run?.runUrl) {
+  const href = statusHref ?? run?.runUrl;
+  if (href) {
     return (
       <a
-        href={run.runUrl}
-        target="_blank"
-        rel="noopener noreferrer"
+        href={href}
+        target={statusHref ? '_self' : '_blank'}
+        rel={statusHref ? undefined : 'noopener noreferrer'}
         style={{ textDecoration: 'none' }}
       >
         {chip}

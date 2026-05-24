@@ -66,16 +66,18 @@ export async function GET(request: NextRequest) {
   try {
     const repo = request.nextUrl.searchParams.get('repo');
     const type = request.nextUrl.searchParams.get('type') === 'edit' ? 'edit' : 'generate';
+    const workflowFile = request.nextUrl.searchParams.get('workflow');
     if (!repo) {
       return NextResponse.json({ error: 'Missing repo parameter' }, { status: 400 });
     }
 
-    // Get latest workflow runs
-    const runs = await githubApi(
-      type === 'edit'
+    // Get latest workflow runs — prefer explicit workflow file, then fall back to type-based defaults
+    const runsEndpoint = workflowFile
+      ? `/repos/${repo}/actions/workflows/${encodeURIComponent(workflowFile)}/runs?per_page=5`
+      : type === 'edit'
         ? `/repos/${repo}/actions/workflows/ai-edit.yml/runs?per_page=5`
-        : `/repos/${repo}/actions/runs?per_page=5`
-    );
+        : `/repos/${repo}/actions/runs?per_page=5`;
+    const runs = await githubApi(runsEndpoint);
     const latestRun = runs.workflow_runs?.[0];
 
     if (!latestRun) {

@@ -122,6 +122,7 @@ function StatusContent() {
   const searchParams = useSearchParams();
   const repo = searchParams.get('repo');
   const type = searchParams.get('type') === 'edit' ? 'edit' : 'generate';
+  const workflowFile = searchParams.get('workflow') || '';
   const initialPageUrl = searchParams.get('pageUrl') || '';
   const [data, setData] = useState<StatusData | null>(null);
   const [fetchError, setFetchError] = useState('');
@@ -139,7 +140,9 @@ function StatusContent() {
   const fetchStatus = useCallback(async () => {
     if (!repo) return;
     try {
-      const res = await fetch(`/api/status?repo=${encodeURIComponent(repo)}&type=${type}`);
+      const params = new URLSearchParams({ repo, type });
+      if (workflowFile) params.set('workflow', workflowFile);
+      const res = await fetch(`/api/status?${params.toString()}`);
       const json = await res.json();
       if (json.error) setFetchError(json.error);
       else {
@@ -149,7 +152,7 @@ function StatusContent() {
     } catch {
       setFetchError('Failed to fetch status');
     }
-  }, [repo, type]);
+  }, [repo, type, workflowFile]);
 
   useEffect(() => {
     fetchStatus();
@@ -317,7 +320,7 @@ function StatusContent() {
         <a href="/" style={s.backLink}>&larr; Dashboard</a>
         <div style={s.card}>
           <div style={{ marginBottom: 24 }}>
-            <h1 style={s.title}>{type === 'edit' ? 'AI Edit Progress' : 'Site Generation Progress'}</h1>
+            <h1 style={s.title}>{data?.workflowName ?? (type === 'edit' ? 'AI Edit Progress' : 'Site Generation Progress')}</h1>
             <p style={s.subtitle}>{repo}</p>
           </div>
 

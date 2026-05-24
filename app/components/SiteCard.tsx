@@ -60,11 +60,6 @@ export function SiteCard({ site, health, healthLoading, onDelete }: SiteCardProp
           <p style={s.siteDomain}>{site.domain}</p>
         </div>
 
-        {siteUrl && (
-          <a href={siteUrl} target="_blank" rel="noopener noreferrer" style={s.openSiteBtn}>
-            Open site ↗
-          </a>
-        )}
       </div>
 
       {/* Workflow chips */}
@@ -77,9 +72,18 @@ export function SiteCard({ site, health, healthLoading, onDelete }: SiteCardProp
         ) : githubError ? (
           <WorkflowErrorChip message={githubError.message} />
         ) : health && health.workflows.length > 0 ? (
-          health.workflows.map((wf) => (
-            <WorkflowChip key={wf.workflowFile} workflow={wf} />
-          ))
+          health.workflows
+            .filter((wf) => {
+              if (site.site_level === 'city' || site.site_level === 'country') {
+                return !/daily|scrape/i.test(wf.workflowName) && !/daily|scrape/i.test(wf.workflowFile);
+              }
+              return true;
+            })
+            .map((wf) => {
+              const isEdit = /edit/i.test(wf.workflowFile);
+              const statusHref = `/status?repo=${encodeURIComponent(site.repo_full_name)}&workflow=${encodeURIComponent(wf.workflowFile)}&type=${isEdit ? 'edit' : 'generate'}`;
+              return <WorkflowChip key={wf.workflowFile} workflow={wf} statusHref={statusHref} />;
+            })
         ) : null}
       </div>
 
@@ -104,9 +108,9 @@ export function SiteCard({ site, health, healthLoading, onDelete }: SiteCardProp
         >
           Edit with AI
         </a>
-        {site.repo_url && (
-          <a href={site.repo_url} target="_blank" rel="noopener noreferrer" style={s.actionBtn}>
-            Repo ↗
+        {siteUrl && (
+          <a href={siteUrl} target="_blank" rel="noopener noreferrer" style={s.urlBtn}>
+            {siteUrl.replace(/^https?:\/\//, '')}
           </a>
         )}
         <button
@@ -171,6 +175,22 @@ const s = {
     border: '1px solid #bae6fd',
     borderRadius: 6,
     textDecoration: 'none',
+  },
+  urlBtn: {
+    display: 'inline-block',
+    padding: '6px 14px',
+    fontSize: 12,
+    fontWeight: 500,
+    color: '#6b7280',
+    background: '#f9fafb',
+    border: '1px solid #e5e7eb',
+    borderRadius: 6,
+    textDecoration: 'none',
+    fontFamily: 'monospace',
+    maxWidth: 220,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap' as const,
   },
   openSiteBtn: {
     display: 'inline-block',
