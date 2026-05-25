@@ -412,17 +412,19 @@ export default function NewSitePage() {
                 />
                 Test (Vercel)
               </label>
-              <label style={s.radioOption(step !== 'basic')}>
-                <input
-                  type="radio"
-                  name="domainEnvironment"
-                  value="production"
-                  checked={domainEnvironment === 'production'}
-                  onChange={() => { setDomainEnvironment('production'); setDomain(''); }}
-                  disabled={step !== 'basic'}
-                />
-                Production (Cloudflare)
-              </label>
+              {session?.user?.email === 'willy.wang-ctr@klook.com' && (
+                <label style={s.radioOption(step !== 'basic')}>
+                  <input
+                    type="radio"
+                    name="domainEnvironment"
+                    value="production"
+                    checked={domainEnvironment === 'production'}
+                    onChange={() => { setDomainEnvironment('production'); setDomain(''); }}
+                    disabled={step !== 'basic'}
+                  />
+                  Production (Cloudflare)
+                </label>
+              )}
             </div>
 
             {/* ── Test: free-text domain ── */}
