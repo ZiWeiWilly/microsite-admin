@@ -536,6 +536,11 @@ export default function NewSitePage() {
               onChange={e => setAffiliateId(e.target.value)}
               disabled={step !== 'basic'}
             />
+            {affiliateId.trim() && (
+              <p style={{ margin: '6px 0 0', fontSize: 12, color: '#b45309' }}>
+                ⚠️ Adding an Affiliate ID will overwrite all channel links.
+              </p>
+            )}
           </div>
 
           <div style={s.fieldGroup}>
