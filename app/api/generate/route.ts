@@ -515,13 +515,17 @@ export async function POST(request: Request) {
         console.warn(`[vercel] project creation failed: ${vercelWarning}`);
       }
     }
-    const vercelSecrets: Record<string, string> = {};
+    const deploySecrets: Record<string, string> = {};
     if (domainEnvironment === 'test') {
-      if (VERCEL_TOKEN) vercelSecrets['VERCEL_TOKEN'] = VERCEL_TOKEN;
-      if (VERCEL_ORG_ID) vercelSecrets['VERCEL_ORG_ID'] = VERCEL_ORG_ID;
-      if (vercelProjectId) vercelSecrets['VERCEL_PROJECT_ID'] = vercelProjectId;
+      if (VERCEL_TOKEN) deploySecrets['VERCEL_TOKEN'] = VERCEL_TOKEN;
+      if (VERCEL_ORG_ID) deploySecrets['VERCEL_ORG_ID'] = VERCEL_ORG_ID;
+      if (vercelProjectId) deploySecrets['VERCEL_PROJECT_ID'] = vercelProjectId;
     }
-    await setRepoSecrets(repoFullName, vercelSecrets);
+    if (domainEnvironment === 'production') {
+      if (CLOUDFLARE_ACCOUNT_ID) deploySecrets['CF_ACCOUNT_ID'] = CLOUDFLARE_ACCOUNT_ID;
+      if (CLOUDFLARE_API_TOKEN) deploySecrets['CF_API_TOKEN'] = CLOUDFLARE_API_TOKEN;
+    }
+    await setRepoSecrets(repoFullName, deploySecrets);
 
     // Step 4: Commit logo images to the repo
     const imageFiles = [

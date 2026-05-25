@@ -62,6 +62,14 @@ export default function NewSitePage() {
   const [affiliateId, setAffiliateId] = useState('');
   const [headScripts, setHeadScripts] = useState('');
 
+  // Cloudflare zone picker (production mode)
+  const [cfZones, setCfZones] = useState<{ id: string; name: string }[]>([]);
+  const [cfZonesLoading, setCfZonesLoading] = useState(false);
+  const [cfZonesError, setCfZonesError] = useState<string | null>(null);
+  const [selectedZone, setSelectedZone] = useState('');
+  const [subdomain, setSubdomain] = useState('');
+  const [useApex, setUseApex] = useState(false);
+
   // Logo images — generated (base64) or manually uploaded
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoLightFile, setLogoLightFile] = useState<File | null>(null);
@@ -82,7 +90,17 @@ export default function NewSitePage() {
   const [dupResult, setDupResult] = useState<{ github: boolean; vercel: boolean; repoName: string } | null>(null);
   const dupTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  function validateDomain(d: string): string | null {
+  function validateDomain(): string | null {
+    if (domainEnvironment === 'production') {
+      if (!useApex) {
+        if (!subdomain) return null;
+        if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(subdomain))
+          return 'Subdomain must be lowercase letters, numbers, and hyphens only';
+        if (subdomain.length > 63) return 'Subdomain is too long (max 63 characters)';
+      }
+      return null;
+    }
+    const d = domain;
     if (!d) return null;
     if (d.length > 100) return 'Domain is too long (max 100 characters)';
     if (!/^[a-z0-9-]+$/.test(d)) return 'Domain must be lowercase and only contain letters, numbers, and hyphens';
@@ -91,7 +109,7 @@ export default function NewSitePage() {
     if (d.startsWith('-') || d.endsWith('-')) return 'Domain cannot start or end with a hyphen';
     return null;
   }
-  const domainError = validateDomain(domain);
+  const domainError = validateDomain();
 
   useEffect(() => {
     if (dupTimerRef.current) clearTimeout(dupTimerRef.current);
@@ -109,6 +127,32 @@ export default function NewSitePage() {
     }, 600);
     return () => { if (dupTimerRef.current) clearTimeout(dupTimerRef.current); };
   }, [domain]);
+
+  // Fetch Cloudflare zones when switching to production mode
+  useEffect(() => {
+    if (domainEnvironment !== 'production') return;
+    if (cfZones.length > 0) return; // already loaded
+    setCfZonesLoading(true);
+    setCfZonesError(null);
+    fetch('/api/cloudflare/zones')
+      .then(r => r.json())
+      .then(data => {
+        if (data.error) throw new Error(data.error);
+        const zones = data.zones ?? [];
+        setCfZones(zones);
+        if (zones.length > 0) setSelectedZone(zones[0].name);
+      })
+      .catch((e: unknown) => setCfZonesError(e instanceof Error ? e.message : 'Failed to load zones'))
+      .finally(() => setCfZonesLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [domainEnvironment]);
+
+  // Sync computed full domain for production mode
+  useEffect(() => {
+    if (domainEnvironment !== 'production') return;
+    if (!selectedZone) { setDomain(''); return; }
+    setDomain(useApex ? selectedZone : subdomain ? `${subdomain}.${selectedZone}` : '');
+  }, [domainEnvironment, selectedZone, subdomain, useApex]);
 
   // Loading
   const [settingsLoading, setSettingsLoading] = useState(false);
@@ -354,21 +398,8 @@ export default function NewSitePage() {
           </div>
           <div style={s.fieldGroup}>
             <label style={s.label}>Domain *</label>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
-              <input
-                required
-                placeholder={LEVEL_CONFIG[siteLevel].domainPlaceholder}
-                style={{ ...s.input, flex: 1, borderColor: domainError ? '#f87171' : dupStatus === 'duplicate' ? '#f87171' : dupStatus === 'ok' ? '#86efac' : '#ddd', borderRadius: domainEnvironment === 'test' ? '6px 0 0 6px' : undefined }}
-                value={domain}
-                onChange={e => setDomain(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
-                disabled={step !== 'basic'}
-              />
-              {domainEnvironment === 'test' && (
-                <span style={{ display: 'inline-flex', alignItems: 'center', padding: '10px 12px', background: '#f3f4f6', border: '1px solid #ddd', borderLeft: 'none', borderRadius: '0 6px 6px 0', fontSize: 14, color: '#6b7280', whiteSpace: 'nowrap' }}>
-                  .vercel.app
-                </span>
-              )}
-            </div>
+
+            {/* ── Environment toggle ── */}
             <div style={s.radioGroup}>
               <label style={s.radioOption(step !== 'basic')}>
                 <input
@@ -376,28 +407,113 @@ export default function NewSitePage() {
                   name="domainEnvironment"
                   value="test"
                   checked={domainEnvironment === 'test'}
-                  onChange={() => setDomainEnvironment('test')}
+                  onChange={() => { setDomainEnvironment('test'); setDomain(''); }}
                   disabled={step !== 'basic'}
                 />
                 Test (Vercel)
               </label>
-              <label
-                style={s.radioOption(true)}
-                title="Cloudflare not available"
-              >
+              <label style={s.radioOption(step !== 'basic')}>
                 <input
                   type="radio"
                   name="domainEnvironment"
                   value="production"
                   checked={domainEnvironment === 'production'}
-                  onChange={() => setDomainEnvironment('production')}
-                  disabled
+                  onChange={() => { setDomainEnvironment('production'); setDomain(''); }}
+                  disabled={step !== 'basic'}
                 />
                 Production (Cloudflare)
               </label>
             </div>
+
+            {/* ── Test: free-text domain ── */}
+            {domainEnvironment === 'test' && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 0, marginTop: 10 }}>
+                <input
+                  required
+                  placeholder={LEVEL_CONFIG[siteLevel].domainPlaceholder}
+                  style={{ ...s.input, flex: 1, borderColor: domainError ? '#f87171' : dupStatus === 'duplicate' ? '#f87171' : dupStatus === 'ok' ? '#86efac' : '#ddd', borderRadius: '6px 0 0 6px' }}
+                  value={domain}
+                  onChange={e => setDomain(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
+                  disabled={step !== 'basic'}
+                />
+                <span style={{ display: 'inline-flex', alignItems: 'center', padding: '10px 12px', background: '#f3f4f6', border: '1px solid #ddd', borderLeft: 'none', borderRadius: '0 6px 6px 0', fontSize: 14, color: '#6b7280', whiteSpace: 'nowrap' }}>
+                  .vercel.app
+                </span>
+              </div>
+            )}
+
+            {/* ── Production: zone picker + subdomain/apex ── */}
+            {domainEnvironment === 'production' && (
+              <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {/* Zone dropdown */}
+                <div>
+                  <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>Root domain (from Cloudflare)</div>
+                  {cfZonesLoading && <div style={{ fontSize: 13, color: '#888' }}>Loading zones…</div>}
+                  {cfZonesError && <div style={{ fontSize: 12, color: '#dc2626' }}>⚠ {cfZonesError}</div>}
+                  {!cfZonesLoading && !cfZonesError && (
+                    <select
+                      value={selectedZone}
+                      onChange={e => setSelectedZone(e.target.value)}
+                      disabled={step !== 'basic'}
+                      style={{ ...s.select, width: '100%' }}
+                    >
+                      {cfZones.length === 0 && <option value="">No zones found</option>}
+                      {cfZones.map(z => (
+                        <option key={z.id} value={z.name}>{z.name}</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+
+                {/* Apex / Subdomain toggle */}
+                <div style={{ display: 'flex', gap: 8 }}>
+                  {(['subdomain', 'apex'] as const).map(mode => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => step === 'basic' && setUseApex(mode === 'apex')}
+                      disabled={step !== 'basic'}
+                      style={{
+                        padding: '6px 16px', borderRadius: 6, fontSize: 13, fontWeight: 600 as const,
+                        border: `1.5px solid ${(mode === 'apex') === useApex ? '#0ea5e9' : '#e5e7eb'}`,
+                        background: (mode === 'apex') === useApex ? '#f0f9ff' : '#fff',
+                        color: (mode === 'apex') === useApex ? '#0369a1' : '#6b7280',
+                        cursor: step !== 'basic' ? 'not-allowed' : 'pointer',
+                      }}
+                    >
+                      {mode === 'apex' ? 'Apex domain' : 'Subdomain'}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Subdomain input */}
+                {!useApex && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
+                    <input
+                      placeholder="e.g. tokyo-tower"
+                      style={{ ...s.input, flex: 1, borderColor: domainError ? '#f87171' : dupStatus === 'duplicate' ? '#f87171' : dupStatus === 'ok' ? '#86efac' : '#ddd', borderRadius: '6px 0 0 6px' }}
+                      value={subdomain}
+                      onChange={e => setSubdomain(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
+                      disabled={step !== 'basic'}
+                    />
+                    <span style={{ display: 'inline-flex', alignItems: 'center', padding: '10px 12px', background: '#f3f4f6', border: '1px solid #ddd', borderLeft: 'none', borderRadius: '0 6px 6px 0', fontSize: 14, color: '#6b7280', whiteSpace: 'nowrap' }}>
+                      {selectedZone ? `.${selectedZone}` : '.your-domain.com'}
+                    </span>
+                  </div>
+                )}
+
+                {/* Preview of the full domain */}
+                {domain && (
+                  <div style={{ fontSize: 12, color: '#0369a1', background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 6, padding: '6px 10px' }}>
+                    Full domain: <strong>{domain}</strong>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Validation & dup-check feedback */}
             {domainError && <div style={{ fontSize: 12, color: '#dc2626', marginTop: 4 }}>{domainError}</div>}
-            {!domainError && dupStatus === 'checking' && <div style={{ fontSize: 12, color: '#888', marginTop: 4 }}>Checking for existing project...</div>}
+            {!domainError && dupStatus === 'checking' && <div style={{ fontSize: 12, color: '#888', marginTop: 4 }}>Checking for existing project…</div>}
             {!domainError && dupStatus === 'ok' && <div style={{ fontSize: 12, color: '#16a34a', marginTop: 4 }}>✓ Name is available</div>}
             {dupStatus === 'duplicate' && dupResult && (
               <div style={{ fontSize: 12, color: '#dc2626', marginTop: 4 }}>
@@ -527,8 +643,8 @@ export default function NewSitePage() {
           {step === 'basic' && (
             <button
               type="submit"
-              disabled={settingsLoading || !!domainError || dupStatus === 'duplicate' || dupStatus === 'checking'}
-              style={s.btnPrimary(settingsLoading || !!domainError || dupStatus === 'duplicate' || dupStatus === 'checking')}
+              disabled={settingsLoading || !!domainError || dupStatus === 'duplicate' || dupStatus === 'checking' || (domainEnvironment === 'production' && !domain)}
+              style={s.btnPrimary(settingsLoading || !!domainError || dupStatus === 'duplicate' || dupStatus === 'checking' || (domainEnvironment === 'production' && !domain))}
             >
               {settingsLoading && <span style={s.spinner} />}
               {settingsLoading ? 'Generating Settings...' : 'Auto Settings →'}
